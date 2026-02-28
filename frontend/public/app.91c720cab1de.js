@@ -538,12 +538,27 @@ const I18N = {
 
 const AUDIO_SAMPLE_RATE = 22050;
 const SOUND_LIBRARY = {
+  radio: {
+    notes: [
+      { freq: 1400, dur: 0.015, decay: 85 },
+      { freq: 980, dur: 0.02, decay: 70 }
+    ],
+    volume: 0.20
+  },
   move: {
     notes: [
       { freq: 600, dur: 0.05, decay: 25 },
       { freq: 400, dur: 0.07, decay: 30 }
     ],
     volume: 0.30
+  },
+  rumble: {
+    notes: [
+      { freq: 90, dur: 0.06, decay: 12 },
+      { freq: 70, dur: 0.07, decay: 10 },
+      { freq: 58, dur: 0.08, decay: 9 }
+    ],
+    volume: 0.36
   },
   capture: {
     notes: [
@@ -568,6 +583,15 @@ const SOUND_LIBRARY = {
       { freq: 1047, dur: 0.28, decay: 3 }
     ],
     volume: 0.50
+  },
+  horn: {
+    notes: [
+      { freq: 220, dur: 0.11, decay: 5 },
+      { freq: 330, dur: 0.13, decay: 5 },
+      { freq: 440, dur: 0.18, decay: 4 },
+      { freq: 554, dur: 0.26, decay: 3 }
+    ],
+    volume: 0.52
   },
   invalid: {
     notes: [
@@ -940,6 +964,8 @@ let onlineQueryMatchCode = new URLSearchParams(window.location.search).get('matc
 let uiPrefs = { ...DEFAULT_UI_PREFS };
 let boardFx = null;
 let boardFxTimer = null;
+let moveDelightTimer = null;
+let moveDelightExplosionTimer = null;
 let vectorSpriteCache = Object.create(null);
 
 let spriteMap = Object.create(null);
@@ -1253,12 +1279,160 @@ function updateAudioMasterGain() {
   audioMaster.gain.value = uiPrefs.soundEnabled ? uiPrefs.soundVolume : 0;
 }
 
+function ensureMoveDelightLayer() {
+  if (!boardFrameEl) return null;
+  let layer = boardFrameEl.querySelector('.move-fx-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'move-fx-layer';
+    boardFrameEl.appendChild(layer);
+  }
+  return layer;
+}
+
+function boardCellCenter(c, r) {
+  if (!boardEl || !boardFrameEl) return null;
+  const cell = boardEl.querySelector(`.cell[data-col="${c}"][data-row="${r}"]`);
+  if (!cell) return null;
+  const cellRect = cell.getBoundingClientRect();
+  const frameRect = boardFrameEl.getBoundingClientRect();
+  return {
+    x: (cellRect.left - frameRect.left) + cellRect.width * 0.5,
+    y: (cellRect.top - frameRect.top) + cellRect.height * 0.5,
+    size: Math.min(cellRect.width, cellRect.height) * 0.82
+  };
+}
+
+function clearMoveDelightFx() {
+  if (moveDelightTimer) {
+    clearTimeout(moveDelightTimer);
+    moveDelightTimer = null;
+  }
+  if (moveDelightExplosionTimer) {
+    clearTimeout(moveDelightExplosionTimer);
+    moveDelightExplosionTimer = null;
+  }
+  if (!boardFrameEl) return;
+  const layer = boardFrameEl.querySelector('.move-fx-layer');
+  if (layer) layer.innerHTML = '';
+}
+
+function spawnCaptureExplosion(c, r, player = 'red') {
+  if (!uiPrefs.animationsEnabled) return;
+  const center = boardCellCenter(c, r);
+  const layer = ensureMoveDelightLayer();
+  if (!center || !layer) return;
+
+  const burst = document.createElement('div');
+  burst.className = `move-fx-explosion ${player === 'blue' ? 'fx-blue' : 'fx-red'}`;
+  burst.style.left = `${center.x}px`;
+  burst.style.top = `${center.y}px`;
+
+  for (let i = 0; i < 8; i++) {
+    const p = document.createElement('span');
+    const angle = (Math.PI * 2 * i) / 8;
+    const dist = 14 + Math.random() * 16;
+    p.style.setProperty('--dx', `${Math.cos(angle) * dist}px`);
+    p.style.setProperty('--dy', `${Math.sin(angle) * dist}px`);
+    p.style.setProperty('--delay', `${Math.random() * 70}ms`);
+    burst.appendChild(p);
+  }
+
+  layer.appendChild(burst);
+  moveDelightExplosionTimer = window.setTimeout(() => {
+    burst.remove();
+  }, 720);
+}
+
+function runMoveDelight(prevState, nextState, fromSquare) {
+  if (!uiPrefs.animationsEnabled) return;
+  if (!prevState || !nextState || !nextState.has_last_move || !nextState.last_move) return;
+
+  clearMoveDelightFx();
+
+  const toSquare = {
+    c: Number(nextState.last_move.dc),
+    r: Number(nextState.last_move.dr)
+  };
+  if (!Number.isFinite(toSquare.c) || !Number.isFinite(toSquare.r)) return;
+
+  const pid = Number(nextState.last_move.pid);
+  const prevPiece = prevState.pieces.find((p) => p.id === pid && p.carrier_id < 0) || null;
+  const nextPiece = nextState.pieces.find((p) => p.id === pid && p.carrier_id < 0) || null;
+  const movedPiece = nextPiece || prevPiece;
+  if (!movedPiece) return;
+
+  const layer = ensureMoveDelightLayer();
+  if (!layer) return;
+
+  const fromCenter = fromSquare ? boardCellCenter(fromSquare.c, fromSquare.r) : null;
+  const toCenter = boardCellCenter(toSquare.c, toSquare.r);
+  if (!toCenter) return;
+
+  if (!fromCenter) {
+    if (nextState.last_move_capture) spawnCaptureExplosion(toSquare.c, toSquare.r, nextState.last_move_player || 'red');
+    return;
+  }
+
+  const sameSquare = (fromSquare.c === toSquare.c && fromSquare.r === toSquare.r);
+  const token = renderPieceToken(movedPiece);
+  token.classList.add(
+    'move-fx-piece',
+    `kind-${kindCssToken(movedPiece.kind)}`,
+    movedPiece.player === 'blue' ? 'fx-blue' : 'fx-red'
+  );
+  token.style.width = `${fromCenter.size}px`;
+  token.style.height = `${fromCenter.size}px`;
+  token.style.left = `${fromCenter.x}px`;
+  token.style.top = `${fromCenter.y}px`;
+  layer.appendChild(token);
+
+  let trail = null;
+  if (!sameSquare && (movedPiece.kind === 'Af' || movedPiece.kind === 'N')) {
+    trail = document.createElement('div');
+    trail.className = `move-fx-trail ${movedPiece.kind === 'Af' ? 'trail-jet' : 'trail-wake'}`;
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+    const len = Math.max(12, Math.hypot(dx, dy));
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    trail.style.left = `${fromCenter.x}px`;
+    trail.style.top = `${fromCenter.y}px`;
+    trail.style.width = `${len}px`;
+    trail.style.transform = `translateY(-50%) rotate(${angle}deg)`;
+    layer.appendChild(trail);
+  }
+
+  window.requestAnimationFrame(() => {
+    if (sameSquare) {
+      token.classList.add('in-place');
+      return;
+    }
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+    token.classList.add('in-flight');
+    token.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
+  });
+
+  if (nextState.last_move_capture) {
+    const delay = sameSquare ? 100 : 300;
+    moveDelightExplosionTimer = window.setTimeout(() => {
+      spawnCaptureExplosion(toSquare.c, toSquare.r, nextState.last_move_player || movedPiece.player || 'red');
+    }, delay);
+  }
+
+  moveDelightTimer = window.setTimeout(() => {
+    token.remove();
+    if (trail) trail.remove();
+  }, 740);
+}
+
 function clearBoardFx() {
   boardFx = null;
   if (boardFxTimer) {
     clearTimeout(boardFxTimer);
     boardFxTimer = null;
   }
+  clearMoveDelightFx();
 }
 
 function scheduleBoardFxClear(ms = 720) {
@@ -1723,6 +1897,13 @@ function boardCoordFromView(viewCol, viewRow) {
   };
 }
 
+function viewCoordFromBoard(col, row) {
+  return {
+    viewCol: boardFlipped ? (COLS - 1 - col) : col,
+    viewRow: boardFlipped ? row : (ROWS - 1 - row)
+  };
+}
+
 function boardIsZoomed() {
   return boardScale > 1.01;
 }
@@ -1905,21 +2086,26 @@ function playTransitionSounds(prevState, nextState) {
   const prevMove = moveKey(prevState);
   const nextMove = moveKey(nextState);
   if (nextMove && nextMove !== prevMove && nextState.last_move) {
+    playSound('radio');
     const pid = nextState.last_move.pid;
     const prevPiece = prevState.pieces.find(p => p.id === pid && p.carrier_id < 0) || null;
     const nextPiece = nextState.pieces.find(p => p.id === pid && p.carrier_id < 0) || null;
     const isCapture = !!nextState.last_move_capture;
     const kamikaze = !!prevPiece && prevPiece.kind === 'Af' && isCapture && !nextPiece;
+    const movedKind = (nextPiece && nextPiece.kind) || (prevPiece && prevPiece.kind) || '';
 
     if (kamikaze) playSound('boom');
-    else playSound(isCapture ? 'capture' : 'move');
+    else {
+      if (movedKind === 'Af' || movedKind === 'N' || movedKind === 'T') playSound('rumble');
+      playSound(isCapture ? 'capture' : 'move');
+    }
 
     if (prevPiece && nextPiece && !prevPiece.hero && !!nextPiece.hero) {
       playSound('hero');
     }
   }
 
-  if (!prevState.game_over && nextState.game_over) playSound('win');
+  if (!prevState.game_over && nextState.game_over) playSound('horn');
 }
 
 function addHistoryEntry(prevState, nextState, fromSquare) {
@@ -2018,6 +2204,13 @@ function pieceGlyph(kind) {
   const code = PIECE_GLYPH[kind];
   if (code) return code;
   return String(kind || '?').slice(0, 2).toUpperCase();
+}
+
+function kindCssToken(kind) {
+  return String(kind || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unit';
 }
 
 function escapeSvgText(text) {
@@ -3822,6 +4015,7 @@ async function sendMove(pid, dc, dr, options = null) {
   clearRetryAction();
   updateStatus();
   drawBoard();
+  runMoveDelight(prevState, data.state, lastMoveFrom);
   if (!skipAutoBot) maybeAutoBotTurn();
   return data.state;
 }
@@ -3853,6 +4047,7 @@ async function requestBot(force) {
     botThinking = false;
     updateStatus();
     drawBoard();
+    runMoveDelight(prevState, state, lastMoveFrom);
   }
 
   maybeAutoBotTurn();

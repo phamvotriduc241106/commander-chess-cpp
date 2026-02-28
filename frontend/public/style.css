@@ -1097,6 +1097,26 @@ body {
   outline-offset: -6px;
 }
 
+.cell.fx-from {
+  animation: origin-trace 520ms ease-out;
+}
+
+.cell.fx-to {
+  animation: move-pulse 460ms ease-out;
+}
+
+.cell.fx-to.fx-red {
+  box-shadow: inset 0 0 0 2px var(--c-fx-red), 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.cell.fx-to.fx-blue {
+  box-shadow: inset 0 0 0 2px var(--c-fx-blue), 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.cell.fx-impact {
+  animation: impact-burst 520ms ease-out;
+}
+
 .board.no-hints .cell.legal-move,
 .board.no-hints .cell.legal-capture {
   box-shadow: none !important;
@@ -1105,6 +1125,112 @@ body {
 
 .board.no-hints .cell.legal-move:not(.legal-capture)::after {
   content: none;
+}
+
+.move-fx-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 22;
+}
+
+.move-fx-piece {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  transition:
+    transform 420ms cubic-bezier(0.22, 0.72, 0.12, 1),
+    filter 420ms ease;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.26));
+}
+
+.move-fx-piece.in-flight {
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.32));
+}
+
+.move-fx-piece.kind-af.in-flight {
+  filter:
+    drop-shadow(0 0 10px rgba(172, 225, 255, 0.72))
+    drop-shadow(0 10px 14px rgba(0, 0, 0, 0.32));
+}
+
+.move-fx-piece.kind-n.in-flight {
+  filter:
+    drop-shadow(0 0 8px rgba(126, 186, 227, 0.6))
+    drop-shadow(0 10px 14px rgba(0, 0, 0, 0.3));
+}
+
+.move-fx-piece.in-place {
+  animation: piece-impact-jolt 320ms ease-out;
+}
+
+.move-fx-trail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 8px;
+  border-radius: 999px;
+  opacity: 0.62;
+  pointer-events: none;
+  transform-origin: left center;
+  animation: move-trail-fade 520ms ease-out forwards;
+}
+
+.move-fx-trail.trail-jet {
+  background: linear-gradient(
+    90deg,
+    rgba(216, 244, 255, 0.9) 0%,
+    rgba(157, 216, 252, 0.55) 42%,
+    rgba(87, 153, 212, 0.12) 100%
+  );
+  height: 7px;
+}
+
+.move-fx-trail.trail-wake {
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(232, 247, 255, 0.74) 0 6px,
+    rgba(126, 188, 227, 0.28) 6px 12px
+  );
+  height: 10px;
+}
+
+.move-fx-explosion {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--cell) * 0.74);
+  height: calc(var(--cell) * 0.74);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.42);
+  background:
+    radial-gradient(circle at center, rgba(255, 244, 210, 0.98) 0%, rgba(255, 166, 86, 0.84) 42%, rgba(222, 66, 41, 0.42) 74%, rgba(0, 0, 0, 0) 100%);
+  box-shadow: 0 0 24px rgba(255, 170, 98, 0.54);
+  animation: capture-explosion 640ms ease-out forwards;
+}
+
+.move-fx-explosion.fx-blue {
+  background:
+    radial-gradient(circle at center, rgba(230, 248, 255, 0.95) 0%, rgba(129, 212, 255, 0.8) 46%, rgba(74, 157, 220, 0.42) 74%, rgba(0, 0, 0, 0) 100%);
+  box-shadow: 0 0 20px rgba(110, 188, 244, 0.52);
+}
+
+.move-fx-explosion > span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 13px;
+  margin: -6px 0 0 -1px;
+  border-radius: 999px;
+  background: rgba(255, 238, 189, 0.95);
+  transform: translate(0, 0) rotate(24deg);
+  animation: capture-spark 460ms ease-out forwards;
+  animation-delay: var(--delay, 0ms);
 }
 
 .piece {
@@ -1202,12 +1328,47 @@ body {
   100% { transform: translateY(0) scale(1); filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.22)); }
 }
 
+@keyframes move-trail-fade {
+  0% { opacity: 0.62; }
+  100% { opacity: 0; }
+}
+
+@keyframes piece-impact-jolt {
+  0% { transform: translate(-50%, -50%) scale(0.9); }
+  45% { transform: translate(-50%, -50%) scale(1.07); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes capture-explosion {
+  0% { transform: translate(-50%, -50%) scale(0.42); opacity: 0.2; }
+  28% { transform: translate(-50%, -50%) scale(1.04); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.45); opacity: 0; }
+}
+
+@keyframes capture-spark {
+  0% {
+    transform: translate(0, 0) rotate(12deg);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--dx, 0px), var(--dy, 0px)) rotate(24deg) scale(0.68);
+    opacity: 0;
+  }
+}
+
 html[data-animations="off"] .cell.fx-to,
 html[data-animations="off"] .cell.fx-from,
 html[data-animations="off"] .cell.fx-impact,
 html[data-animations="off"] .piece-landed,
-html[data-animations="off"] .cell.legal-capture {
+html[data-animations="off"] .cell.legal-capture,
+html[data-animations="off"] .move-fx-piece,
+html[data-animations="off"] .move-fx-trail,
+html[data-animations="off"] .move-fx-explosion {
   animation: none !important;
+}
+
+html[data-animations="off"] .move-fx-layer {
+  display: none !important;
 }
 
 .river-label {
