@@ -2041,6 +2041,21 @@ static uint8_t   g_tt_age   = 0;
 static void*     g_tt_arena = nullptr;
 static size_t    g_tt_arena_bytes = 0;
 static constexpr std::align_val_t TT_ARENA_ALIGN = std::align_val_t(64);
+// Thread-safe TT striping for SMP probe/store.
+static constexpr size_t TT_LOCK_STRIPES = 1024; // power-of-two
+static std::array<EngineMutex, TT_LOCK_STRIPES> g_tt_locks;
+
+static inline bool tt_locking_enabled() {
+#if COMMANDER_ENABLE_THREADS
+    return !get_engine_config().force_single_thread;
+#else
+    return false;
+#endif
+}
+
+static inline EngineMutex& tt_lock_for_hash(uint64_t h) {
+    return g_tt_locks[h & (TT_LOCK_STRIPES - 1)];
+}
 
 static void tt_arena_release() {
     if (!g_tt_arena) return;
@@ -2392,49 +2407,64 @@ static void reset_search_tables() {
 // ── TT probe / store ──────────────────────────────────────────────────────
 static const TTEntry* tt_probe(uint64_t h) {
     if (!g_TT) return nullptr;
-    const TTCluster& c = g_TT[h & g_tt_mask];
-    const TTEntry* dp = &c.e[0];
-    const TTEntry* ar = &c.e[1];
-    bool dp_hit = (dp->key == h);
-    bool ar_hit = (ar->key == h);
-    if (dp_hit && ar_hit) {
-        // Prefer same-generation entry, then deeper
-        bool dp_current = (dp->age == g_tt_age);
-        bool ar_current = (ar->age == g_tt_age);
-        if (dp_current != ar_current) return dp_current ? dp : ar;
-        return (dp->depth >= ar->depth) ? dp : ar;
+    auto probe_impl = [&]() -> const TTEntry* {
+        const TTCluster& c = g_TT[h & g_tt_mask];
+        const TTEntry* dp = &c.e[0];
+        const TTEntry* ar = &c.e[1];
+        bool dp_hit = (dp->key == h);
+        bool ar_hit = (ar->key == h);
+        if (dp_hit && ar_hit) {
+            // Prefer same-generation entry, then deeper
+            bool dp_current = (dp->age == g_tt_age);
+            bool ar_current = (ar->age == g_tt_age);
+            if (dp_current != ar_current) return dp_current ? dp : ar;
+            return (dp->depth >= ar->depth) ? dp : ar;
+        }
+        if (dp_hit) return dp;
+        if (ar_hit) return ar;
+        return nullptr;
+    };
+    if (tt_locking_enabled()) {
+        std::lock_guard<EngineMutex> lk(tt_lock_for_hash(h));
+        return probe_impl();
     }
-    if (dp_hit) return dp;
-    if (ar_hit) return ar;
-    return nullptr;
+    return probe_impl();
 }
 
 static void tt_store(uint64_t h, int depth, int flag, int val, MoveTriple best) {
     if (!g_TT) return;
-    TTCluster& c = g_TT[h & g_tt_mask];
-    auto write_entry = [&](TTEntry& e) {
-        // Write key last so probes either see old entry or a mostly-complete new entry.
-        e.key   = 0;
-        e.depth = (int16_t)std::min(depth, (int)INT16_MAX);
-        e.flag  = (uint8_t)flag;
-        e.val   = (int16_t)std::max(-32000, std::min(32000, val));
-        e.age   = g_tt_age;
-        tt_pack_move(e, best);
-        e.key   = h;
+    auto store_impl = [&]() {
+        TTCluster& c = g_TT[h & g_tt_mask];
+        auto write_entry = [&](TTEntry& e) {
+            // Write key last so probes either see old entry or a mostly-complete new entry.
+            e.key   = 0;
+            e.depth = (int16_t)std::min(depth, (int)INT16_MAX);
+            e.flag  = (uint8_t)flag;
+            e.val   = (int16_t)std::max(-32000, std::min(32000, val));
+            e.age   = g_tt_age;
+            tt_pack_move(e, best);
+            e.key   = h;
+        };
+
+        // Slot 0: depth-preferred, but prefer overwriting stale entries.
+        TTEntry& depth_slot = c.e[0];
+        bool slot0_stale = (depth_slot.age != g_tt_age);
+        if (depth_slot.key == h) {
+            if (depth >= depth_slot.depth || flag == TT_EXACT) write_entry(depth_slot);
+        } else if (depth_slot.key == 0 || slot0_stale || depth >= depth_slot.depth) {
+            write_entry(depth_slot);
+        }
+
+        // Slot 1: always replace.
+        TTEntry& always_slot = c.e[1];
+        write_entry(always_slot);
     };
-
-    // Slot 0: depth-preferred, but prefer overwriting stale entries.
-    TTEntry& depth_slot = c.e[0];
-    bool slot0_stale = (depth_slot.age != g_tt_age);
-    if (depth_slot.key == h) {
-        if (depth >= depth_slot.depth || flag == TT_EXACT) write_entry(depth_slot);
-    } else if (depth_slot.key == 0 || slot0_stale || depth >= depth_slot.depth) {
-        write_entry(depth_slot);
+    if (tt_locking_enabled()) {
+        std::lock_guard<EngineMutex> lk(tt_lock_for_hash(h));
+        store_impl();
+        return;
     }
-
-    // Slot 1: always replace.
-    TTEntry& always_slot = c.e[1];
-    write_entry(always_slot);
+    store_impl();
 }
 
 static void store_killer(const MoveTriple& m, int ply) {
@@ -2608,20 +2638,18 @@ static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
 static int see(const PieceList& pieces, int col, int row,
                const std::string& attacker_player, int depth=0) {
     if (depth > 6) return 0;
-    // Build context once for all pieces (avoids O(n²) rebuild per attacker).
-    MoveGenContext ctx = build_movegen_context(const_cast<PieceList&>(pieces));
+    // Build context once for all pieces in this SEE node.
+    MoveGenContext ctx = build_movegen_context(pieces);
+    int target_sq = sq_index(col, row);
     // Find least-valuable attacker for attacker_player
     const Piece* best_atk = nullptr;
     int best_val = 999999;
     for (auto& p : pieces) {
         if (p.player != attacker_player) continue;
-        auto mvs = get_moves_with_ctx(p, ctx);
-        for (auto& m : mvs) {
-            if (m.first==col && m.second==row) {
-                int v = std::max(1, piece_value_fast(p.kind));
-                if (v < best_val) { best_val=v; best_atk=&p; }
-                break;
-            }
+        BB132 attacks = get_move_mask_bitboard(p, ctx);
+        if (attacks.test(target_sq)) {
+            int v = std::max(1, piece_value_fast(p.kind));
+            if (v < best_val) { best_val=v; best_atk=&p; }
         }
     }
     if (!best_atk) return 0;
@@ -2716,13 +2744,13 @@ static int attackers_to_square(const PieceList& pieces, int col, int row,
         int pl = attacker_player=="red" ? 0 : 1;
         return cache->counts[pl][row][col];
     }
+    const int target_sq = sq_index(col, row);
+    MoveGenContext ctx = build_movegen_context(pieces);
     int attackers = 0;
     for (auto& p : pieces) {
         if (p.player != attacker_player) continue;
-        auto mvs = get_moves(p, const_cast<PieceList&>(pieces));
-        for (auto& m : mvs) {
-            if (m.first == col && m.second == row) { attackers++; break; }
-        }
+        BB132 attacks = get_move_mask_bitboard(p, ctx);
+        if (attacks.test(target_sq)) attackers++;
     }
     return attackers;
 }
@@ -2874,7 +2902,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
                     threat = THREAT_BONUS;
                 }
             } else if (oc) {
-                auto mvs = get_moves(p, const_cast<PieceList&>(pieces));
+                auto mvs = get_moves(p, pieces);
                 for (auto& m : mvs) {
                     if (m.first==oc->col && m.second==oc->row) {
                         threat = THREAT_BONUS; break;
@@ -2986,7 +3014,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
         // Commander virtual mobility: count escape squares
         int escapes = 0;
-        auto cmd_moves = get_moves(*my_cmd, const_cast<PieceList&>(pieces));
+        auto cmd_moves = get_moves(*my_cmd, pieces);
         for (auto& m : cmd_moves) {
             int opp_pl = (perspective == "red") ? 1 : 0;
             if (!cache || cache->counts[opp_pl][m.second][m.first] == 0) escapes++;
@@ -3299,14 +3327,23 @@ static bool path_is_threefold(uint64_t h) {
     return false;
 }
 
+// Seed search repetition path from game history.
+// The current root hash is expected to be added by SearchPathGuard, so when
+// the history already ends with root_hash we drop one copy to avoid double-counting.
+static void seed_search_hash_path_from_history(const std::vector<uint64_t>& history,
+                                               uint64_t root_hash) {
+    g_search_hash_path = history;
+    if (!g_search_hash_path.empty() && g_search_hash_path.back() == root_hash) {
+        g_search_hash_path.pop_back();
+    }
+}
+
 static int alphabeta(SearchState& st, int depth, int alpha, int beta,
-                     bool is_max, const std::string& cpu_player, int ply,
+                     const std::string& cpu_player, int ply,
                      bool null_ok=true, const MoveTriple* prev_move=nullptr,
                      ThreadData* td=nullptr) {
     SearchPathGuard path_guard(st.hash);
     if (path_is_threefold(st.hash)) return 0;
-
-    (void)is_max;
     g_nodes.fetch_add(1, std::memory_order_relaxed);
     const bool node_is_max = (st.turn == cpu_player);
     if (ply < MAX_PLY) { if (td) td->pv_len[ply] = ply; else g_pv_len[ply] = ply; }
@@ -3412,13 +3449,13 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         // Quick check: if static eval already beats probcut_beta, likely a cut
         if (node_is_max && static_eval >= probcut_beta) {
             int pc_val = alphabeta(st, probcut_depth, probcut_beta - 1, probcut_beta,
-                                   node_is_max, cpu_player, ply, false, prev_move, td);
+                                   cpu_player, ply, false, prev_move, td);
             if (pc_val >= probcut_beta) return pc_val;
         }
         if (!node_is_max && static_eval <= alpha - 200) {
             int probcut_alpha = alpha - 200;
             int pc_val = alphabeta(st, probcut_depth, probcut_alpha, probcut_alpha + 1,
-                                   node_is_max, cpu_player, ply, false, prev_move, td);
+                                   cpu_player, ply, false, prev_move, td);
             if (pc_val <= probcut_alpha) return pc_val;
         }
     }
@@ -3460,11 +3497,9 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 int null_val;
                 if (node_is_max) {
                     // Minimax search: keep cpu_player perspective and do not negate.
-                    null_val = alphabeta(ns, depth-1-R, beta-1, beta,
-                                         false, cpu_player, ply+1, false, prev_move, td);
+                    null_val = alphabeta(ns, depth-1-R, beta-1, beta, cpu_player, ply+1, false, prev_move, td);
                 } else {
-                    null_val = alphabeta(ns, depth-1-R, alpha, alpha+1,
-                                         true, cpu_player, ply+1, false, prev_move, td);
+                    null_val = alphabeta(ns, depth-1-R, alpha, alpha+1, cpu_player, ply+1, false, prev_move, td);
                 }
                 ns.turn = nu.turn_before;
                 ns.hash = nu.hash_before;
@@ -3474,8 +3509,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 if (node_is_max) {
                     if (null_val >= beta) {
                         if (depth >= 8) {
-                            int verify = alphabeta(st, depth-R-1, beta-1, beta,
-                                                   node_is_max, cpu_player, ply+1, false, prev_move, td);
+                            int verify = alphabeta(st, depth-R-1, beta-1, beta, cpu_player, ply+1, false, prev_move, td);
                             if (verify >= beta) return beta;
                         } else {
                             return beta;
@@ -3484,8 +3518,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 } else {
                     if (null_val <= alpha) {
                         if (depth >= 8) {
-                            int verify = alphabeta(st, depth-R-1, alpha, alpha+1,
-                                                   node_is_max, cpu_player, ply+1, false, prev_move, td);
+                            int verify = alphabeta(st, depth-R-1, alpha, alpha+1, cpu_player, ply+1, false, prev_move, td);
                             if (verify <= alpha) return alpha;
                         } else {
                             return alpha;
@@ -3521,8 +3554,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
     // Track quiet moves searched (for history malus on cutoff)
     struct QuietEntry { int ki; int dc; int dr; };
-    std::vector<QuietEntry> searched_quiets;
-    searched_quiets.reserve(16);
+    std::array<QuietEntry, 64> searched_quiets{};
+    int searched_quiet_count = 0;
 
     for (auto& m : moves) {
         if (time_up()) break;
@@ -3620,8 +3653,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                     if (tested >= 16 || time_up()) break;
                     UndoMove su;
                     if (!make_move_inplace(st, om, cpu_player, su)) continue;
-                    int sv = alphabeta(st, depth - 2, sing_beta - 1, sing_beta,
-                                       false, cpu_player, ply + 1, false, &om, td);
+                    int sv = alphabeta(st, depth - 2, sing_beta - 1, sing_beta, cpu_player, ply + 1, false, &om, td);
                     unmake_move_inplace(st, su);
                     ++tested;
                     if (sv >= sing_beta) { is_singular = false; break; }
@@ -3671,7 +3703,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         int child;
         if (move_index == 0) {
             // PV move: full window
-            child = alphabeta(st, ext_depth, alpha, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+            child = alphabeta(st, ext_depth, alpha, beta, cpu_player, ply+1, true, &m, td);
         } else {
             int new_depth = ext_depth;
 
@@ -3688,21 +3720,21 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
             // Zero-window (PVS) search
             if (node_is_max)
-                child = alphabeta(st, new_depth, alpha, alpha+1, !node_is_max, cpu_player, ply+1, true, &m, td);
+                child = alphabeta(st, new_depth, alpha, alpha+1, cpu_player, ply+1, true, &m, td);
             else
-                child = alphabeta(st, new_depth, beta-1,  beta,  !node_is_max, cpu_player, ply+1, true, &m, td);
+                child = alphabeta(st, new_depth, beta-1,  beta, cpu_player, ply+1, true, &m, td);
 
             // Re-search at full depth if LMR-reduced search beats the bound
             bool lmr_fail = node_is_max ? (child > alpha) : (child < beta);
             if (new_depth < ext_depth && lmr_fail) {
                 if (pv_node) {
                     // PV node: re-search directly with full window (skip extra ZW)
-                    child = alphabeta(st, ext_depth, alpha, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+                    child = alphabeta(st, ext_depth, alpha, beta, cpu_player, ply+1, true, &m, td);
                 } else {
                     if (node_is_max)
-                        child = alphabeta(st, ext_depth, alpha, alpha+1, !node_is_max, cpu_player, ply+1, true, &m, td);
+                        child = alphabeta(st, ext_depth, alpha, alpha+1, cpu_player, ply+1, true, &m, td);
                     else
-                        child = alphabeta(st, ext_depth, beta-1, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+                        child = alphabeta(st, ext_depth, beta-1, beta, cpu_player, ply+1, true, &m, td);
                 }
             }
 
@@ -3711,7 +3743,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 bool pvs_fail = node_is_max ? (child > alpha && child < beta)
                                             : (child < beta  && child > alpha);
                 if (pvs_fail && pv_node) {
-                    child = alphabeta(st, ext_depth, alpha, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+                    child = alphabeta(st, ext_depth, alpha, beta, cpu_player, ply+1, true, &m, td);
                 }
             }
         }
@@ -3720,7 +3752,9 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
         // Track searched quiet moves for history malus
         if (is_quiet && moved_ki >= 0) {
-            searched_quiets.push_back({moved_ki, m.dc, m.dr});
+            if (searched_quiet_count < (int)searched_quiets.size()) {
+                searched_quiets[searched_quiet_count++] = {moved_ki, m.dc, m.dr};
+            }
         }
 
         move_index++;
@@ -3751,7 +3785,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                                   update_cont_history(prev_move, moved_ki, m.dc, m.dr, depth); }
                     }
                     // History malus: penalise other quiet moves that didn't cause cutoff
-                    for (auto& sq : searched_quiets) {
+                    for (int qi = 0; qi < searched_quiet_count; qi++) {
+                        const auto& sq = searched_quiets[qi];
                         if (sq.ki == moved_ki && sq.dc == m.dc && sq.dr == m.dr) continue;
                         if (td) td_penalise_history(*td, hist_pl, sq.ki, sq.dc, sq.dr, depth);
                         else    penalise_history(hist_pl, sq.ki, sq.dc, sq.dr, depth);
@@ -3790,7 +3825,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                         else    { update_history(hist_pl, moved_ki, m.dc, m.dr, depth);
                                   update_cont_history(prev_move, moved_ki, m.dc, m.dr, depth); }
                     }
-                    for (auto& sq : searched_quiets) {
+                    for (int qi = 0; qi < searched_quiet_count; qi++) {
+                        const auto& sq = searched_quiets[qi];
                         if (sq.ki == moved_ki && sq.dc == m.dc && sq.dr == m.dr) continue;
                         if (td) td_penalise_history(*td, hist_pl, sq.ki, sq.dc, sq.dr, depth);
                         else    penalise_history(hist_pl, sq.ki, sq.dc, sq.dr, depth);
@@ -4009,6 +4045,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     g_nodes.store(0, std::memory_order_relaxed);
 
     SearchState root_st = make_search_state(pieces, cpu_player, cpu_player);
+    seed_search_hash_path_from_history(g_game_rep_history, root_st.hash);
     AllMoves all_moves  = all_moves_for(root_st.pieces, cpu_player);
     if (all_moves.empty()) return {false, {}};
     if (all_moves.size() == 1) return {true, all_moves[0]};
@@ -4043,7 +4080,6 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     auto evaluate_leaf_value = [&](SelectionPath& sel, int* out_val) -> bool {
         if (!out_val) return false;
         int val = alphabeta(sel.eval_st, ab_depth, -999999, 999999,
-                            (sel.eval_st.turn == cpu_player),
                             cpu_player, (sel.l2_idx >= 0 ? 2 : 1), true, &sel.prev_move, nullptr);
         if (time_up()) return false;
         *out_val = val;
@@ -4383,12 +4419,12 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
     auto soft_deadline = std::chrono::steady_clock::now() +
                          std::chrono::milliseconds((int)(time_limit_secs * 550));
     reset_time_state();
-    // Seed search path with game-level repetition history so the engine
-    // avoids moves that create threefold repetition with prior positions.
-    g_search_hash_path = g_game_rep_history;  // may be empty if not in sim
     g_nodes.store(0, std::memory_order_relaxed);
 
     SearchState root = make_search_state(pieces, cpu_player, cpu_player);
+    // Seed search path with game-level repetition history so the engine
+    // avoids moves that create threefold repetition with prior positions.
+    seed_search_hash_path_from_history(g_game_rep_history, root.hash);
     AllMoves all_moves = all_moves_for(root.pieces, cpu_player);
     if (all_moves.empty()) return {false, {}};
     if (all_moves.size() == 1) return {true, all_moves[0]};  // easy move
@@ -4472,15 +4508,15 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
                 int val;
                 if (root_move_idx == 0) {
                     // First move: full window search
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                     cpu_player, 1, true, &m, td);
                 } else {
                     // PVS: zero-window search first
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1,
                                     cpu_player, 1, true, &m, td);
                     // Re-search with full window if it beats alpha but doesn't reach beta
                     if (val > window_alpha && val < window_beta) {
-                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                         cpu_player, 1, true, &m, td);
                     }
                 }
@@ -4577,7 +4613,6 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                         int max_depth, SMPShared& shared) {
     init_lmr_table();
     reset_time_state();
-    g_search_hash_path = g_game_rep_history;  // seed with game history
     // Each thread gets its own ThreadData
     ThreadData td;
     td.thread_id = thread_id;
@@ -4587,6 +4622,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
     g_deadline = shared.deadline;
 
     SearchState root = make_search_state(pieces, cpu_player, cpu_player);
+    seed_search_hash_path_from_history(g_game_rep_history, root.hash);
     AllMoves all_moves = all_moves_for(root.pieces, cpu_player);
     if (all_moves.empty()) return;
 
@@ -4677,14 +4713,14 @@ static void smp_worker(int thread_id, const PieceList& pieces,
 
                 int val;
                 if (root_move_idx == 0) {
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                     cpu_player, 1, true, &m, &td);
                 } else {
                     // PVS: zero-window search first
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1,
                                     cpu_player, 1, true, &m, &td);
                     if (val > window_alpha && val < window_beta) {
-                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                         cpu_player, 1, true, &m, &td);
                     }
                 }
