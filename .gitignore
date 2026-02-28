@@ -1,0 +1,31 @@
+.DS_Store
+.idea/
+.firebase/
+
+# CLion / CMake build output
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# macOS debug symbols
+*.dSYM/
+
+# Local binaries
+commander
+commander_asan
+commanderchess
+commanderchess_check
+commanderchess_check_setup
+commanderchess_sim
+backend/commanderchess-api
+backend/commander_api_check_setup
+
+# Simulation outputs and logs
+sim2h_*/
+sim2h_test_*/
+sim8h_*/
+sim*_results.tar.gz
+*.log
+sim_baseline.txt

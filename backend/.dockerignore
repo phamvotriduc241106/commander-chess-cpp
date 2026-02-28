@@ -1,0 +1,6 @@
+.git
+.gitignore
+*.o
+*.obj
+*.dSYM
+commanderchess-api

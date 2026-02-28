@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Commander Chess Rulebook</title>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --panel: #ffffff;
+      --text: #1f2733;
+      --muted: #4b5a6d;
+      --accent: #2f3a4a;
+      --line: #d5dce4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.5rem;
+      color: var(--accent);
+      letter-spacing: 0.03em;
+    }
+    h2 {
+      margin: 16px 0 8px;
+      font-size: 1.03rem;
+      color: var(--accent);
+    }
+    p {
+      margin: 0 0 10px;
+      color: var(--muted);
+    }
+    ul {
+      margin: 0;
+      padding-left: 18px;
+    }
+    li { margin: 5px 0; }
+    .lang-block[hidden] { display: none; }
+    .note {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f9fbfd;
+      color: var(--muted);
+      font-size: 0.93rem;
+    }
+    .piece {
+      border-top: 1px dashed var(--line);
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    .piece strong {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section id="rules-en" class="lang-block">
+      <h1>Commander Chess Rulebook (Web Summary)</h1>
+      <p>This browser-friendly page summarizes the official Commander Chess rules for quick reference.</p>
+
+      <h2>Core Concepts</h2>
+      <ul>
+        <li>Two players: <strong>RED</strong> and <strong>BLUE</strong>.</li>
+        <li>Board size: <strong>11x12</strong>, with land, sea, and river/reef zones.</li>
+        <li>Main objective in Full Battle: defeat the enemy Commander.</li>
+        <li>Alternative objectives exist for Marine, Air, and Land battle modes.</li>
+      </ul>
+
+      <h2>Turn, Movement, and Combat</h2>
+      <ul>
+        <li>Players alternate turns, moving one unit per turn unless special mechanics apply.</li>
+        <li>Most movement is orthogonal; some units also move diagonally or at extended range.</li>
+        <li>Combat rules are asymmetric: some units capture by occupying, while others strike from distance.</li>
+        <li>Transport/carrying allows combined formations for tactical repositioning.</li>
+        <li>Heroic pieces can gain stronger movement/capture behavior after decisive achievements.</li>
+      </ul>
+
+      <h2>Piece Types and Movement Highlights</h2>
+      <div class="piece"><strong>C - Commander:</strong> Orthogonal movement up to 10; cannot move into direct open line against enemy Commander.</div>
+      <div class="piece"><strong>H - Headquarters:</strong> Base piece; typically immobile.</div>
+      <div class="piece"><strong>In - Infantry:</strong> 1 orthogonal step on land.</div>
+      <div class="piece"><strong>M - Militia:</strong> 1 step including diagonal on land.</div>
+      <div class="piece"><strong>T - Tank:</strong> Up to 2 orthogonal on land; can fire at some sea targets within 2 squares.</div>
+      <div class="piece"><strong>E - Engineer:</strong> 1 orthogonal on land; can ferry heavy ground fire units.</div>
+      <div class="piece"><strong>A - Artillery:</strong> Up to 3 orthogonal (hero may add diagonal); river crossing restrictions apply.</div>
+      <div class="piece"><strong>Aa - Anti-Aircraft:</strong> 1 orthogonal on land; creates anti-air defense zone.</div>
+      <div class="piece"><strong>Ms - Missile:</strong> Up to 2 orthogonal move; can strike orthogonal range 1-2 and adjacent diagonal targets (non-sea navy restrictions apply).</div>
+      <div class="piece"><strong>Af - Air Force:</strong> Flying movement up to 4 in 8 directions; non-hero air can be blocked/intercepted by anti-air zones.</div>
+      <div class="piece"><strong>N - Navy:</strong> Moves on navigable water up to 4, including diagonal; supports naval/ground fire and transport roles.</div>
+
+      <p class="note">This page is a practical web summary. Tournament and advanced variants may differ in the complete official document.</p>
+    </section>
+
+    <section id="rules-vi" class="lang-block" hidden>
+      <h1>Luật Cờ Tư Lệnh (Bản tóm tắt trên web)</h1>
+      <p>Trang này tóm tắt luật chính của Commander Chess để xem nhanh ngay trên trình duyệt.</p>
+
+      <h2>Khái niệm cốt lõi</h2>
+      <ul>
+        <li>Hai bên chơi: <strong>ĐỎ</strong> và <strong>XANH</strong>.</li>
+        <li>Kích thước bàn cờ: <strong>11x12</strong>, gồm vùng đất liền, biển, sông/rạn.</li>
+        <li>Mục tiêu chính của Toàn chiến: hạ Tư lệnh đối phương.</li>
+        <li>Có các mục tiêu riêng cho Hải chiến, Không chiến, Lục chiến.</li>
+      </ul>
+
+      <h2>Lượt đi, di chuyển và chiến đấu</h2>
+      <ul>
+        <li>Hai bên đi luân phiên, mỗi lượt di chuyển một quân (trừ khi có cơ chế đặc biệt).</li>
+        <li>Đa số quân đi dọc/ngang; một số quân có thể đi chéo hoặc đi xa hơn.</li>
+        <li>Cơ chế tấn công không đối xứng: có quân bắt bằng chiếm ô, có quân đánh tầm xa.</li>
+        <li>Cơ chế chở quân/cõng quân giúp phối hợp đội hình và tái triển khai chiến thuật.</li>
+        <li>Quân anh hùng có thể tăng khả năng đi/bắt sau các mốc thành tích quan trọng.</li>
+      </ul>
+
+      <h2>Các quân và cách đi (tóm tắt)</h2>
+      <div class="piece"><strong>C - Tư lệnh:</strong> Đi dọc/ngang tối đa 10 ô; không được đứng vào thế nhìn thẳng trực diện với Tư lệnh địch.</div>
+      <div class="piece"><strong>H - Sở chỉ huy:</strong> Quân căn cứ, thường không di chuyển.</div>
+      <div class="piece"><strong>In - Bộ binh:</strong> Đi 1 ô dọc/ngang trên đất liền.</div>
+      <div class="piece"><strong>M - Dân quân:</strong> Đi 1 ô, gồm cả đường chéo trên đất liền.</div>
+      <div class="piece"><strong>T - Xe tăng:</strong> Đi tối đa 2 ô dọc/ngang trên đất liền; có thể bắn một số mục tiêu biển trong tầm 2 ô.</div>
+      <div class="piece"><strong>E - Công binh:</strong> Đi 1 ô dọc/ngang trên đất liền; có thể chở nhóm hỏa lực mặt đất hạng nặng.</div>
+      <div class="piece"><strong>A - Pháo binh:</strong> Đi tối đa 3 ô dọc/ngang (anh hùng có thể thêm đường chéo); có hạn chế khi qua sông.</div>
+      <div class="piece"><strong>Aa - Phòng không:</strong> Đi 1 ô dọc/ngang trên đất liền; tạo vùng khống chế phòng không.</div>
+      <div class="piece"><strong>Ms - Tên lửa:</strong> Đi tối đa 2 ô dọc/ngang; có thể đánh mục tiêu tầm 1-2 theo trục và chéo gần (có giới hạn với mục tiêu trên biển/hải quân).</div>
+      <div class="piece"><strong>Af - Không quân:</strong> Bay tối đa 4 ô theo 8 hướng; không quân chưa anh hùng có thể bị chặn/bắn bởi vùng phòng không.</div>
+      <div class="piece"><strong>N - Hải quân:</strong> Di chuyển trên vùng nước hợp lệ tối đa 4 ô, gồm đường chéo; có vai trò hỏa lực và vận tải.</div>
+
+      <p class="note">Đây là bản tóm tắt phục vụ trải nghiệm web. Thể thức giải đấu hoặc biến thể nâng cao có thể khác tài liệu đầy đủ.</p>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const lang = (params.get('lang') || 'en').toLowerCase();
+      const showVi = lang === 'vi';
+      const en = document.getElementById('rules-en');
+      const vi = document.getElementById('rules-vi');
+      if (!en || !vi) return;
+      en.hidden = showVi;
+      vi.hidden = !showVi;
+      document.documentElement.lang = showVi ? 'vi' : 'en';
+      document.title = showVi ? 'Luật Cờ Tư Lệnh' : 'Commander Chess Rulebook';
+    })();
+  </script>
+</body>
+</html>

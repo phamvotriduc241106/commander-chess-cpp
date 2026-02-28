@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Commander Chess</title>
+  <meta name="description" content="Commander Chess is a modern strategy board game with land, air, and sea forces. Play against CPU or local multiplayer in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Commander Chess" />
+  <meta property="og:description" content="Play Commander Chess in your browser with local CPU or local multiplayer modes." />
+  <meta property="og:url" content="https://commander-chess-cpp-1771534802.web.app/" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/style.68440f84524e.css" />
+</head>
+<body>
+  <section id="setupOverlay" class="setup-overlay">
+    <div class="setup-card">
+      <p id="setupKicker" class="kicker">Mode Setup</p>
+      <h2 id="setupTitle">Choose Language, Player Mode, Mode, Difficulty, and Side</h2>
+      <p id="setupSub" class="setup-sub">Choose your settings, then start the match.</p>
+
+      <p id="languageLabel" class="setup-label">Language</p>
+      <div id="languageButtons" class="setup-grid setup-grid-two">
+        <button class="lang-btn" data-lang="en" type="button">English</button>
+        <button class="lang-btn" data-lang="vi" type="button">Vietnamese</button>
+      </div>
+
+      <p id="setupThemeLabel" class="setup-label">Theme</p>
+      <div id="setupThemeButtons" class="setup-grid setup-grid-three">
+        <button class="theme-btn" data-theme="system" type="button">System</button>
+        <button class="theme-btn" data-theme="light" type="button">Light</button>
+        <button class="theme-btn" data-theme="dark" type="button">Dark</button>
+      </div>
+
+      <p id="playerModeLabel" class="setup-label">Player Mode</p>
+      <div id="playerModeButtons" class="setup-grid setup-grid-three">
+        <button class="player-mode-btn" data-player-mode="single" type="button">Single Player (vs CPU)</button>
+        <button class="player-mode-btn" data-player-mode="local" type="button">Local Multiplayer (2 players)</button>
+        <button class="player-mode-btn" data-player-mode="online" type="button">Online Multiplayer (P2P)</button>
+      </div>
+
+      <section id="onlinePanel" class="online-panel" hidden>
+        <h3 id="onlinePanelTitle">Online Match</h3>
+        <p id="onlinePanelHint" class="online-hint">Create a room as host or join with a match code.</p>
+        <div class="online-create-row">
+          <button id="createOnlineBtn" class="btn primary" type="button">CREATE ONLINE MATCH</button>
+        </div>
+        <div class="online-code-row">
+          <label class="field" for="onlineMatchCode">
+            <span id="onlineMatchCodeLabel">Match Code</span>
+            <input id="onlineMatchCode" type="text" readonly value="-" />
+          </label>
+          <div class="online-code-actions">
+            <button id="copyOnlineCodeBtn" class="btn ghost" type="button">COPY CODE</button>
+            <button id="copyOnlineLinkBtn" class="btn ghost" type="button">COPY LINK</button>
+          </div>
+        </div>
+        <div class="online-join-row">
+          <label class="field" for="joinMatchInput">
+            <span id="joinMatchInputLabel">Join Match</span>
+            <input id="joinMatchInput" type="text" placeholder="Enter match code" />
+          </label>
+          <button id="joinOnlineBtn" class="btn ghost" type="button">JOIN MATCH</button>
+        </div>
+        <p id="onlineStatusText" class="online-status">No online match selected.</p>
+      </section>
+
+      <div id="modeButtons" class="mode-grid">
+        <button class="mode-btn" data-mode="full" type="button">
+          <strong>Full Battle</strong>
+          <span>Capture the enemy Commander.</span>
+        </button>
+        <button class="mode-btn" data-mode="marine" type="button">
+          <strong>Marine Battle</strong>
+          <span>Destroy 2 enemy Navies.</span>
+        </button>
+        <button class="mode-btn" data-mode="air" type="button">
+          <strong>Air Battle</strong>
+          <span>Destroy 2 enemy Air Forces.</span>
+        </button>
+        <button class="mode-btn" data-mode="land" type="button">
+          <strong>Land Battle</strong>
+          <span>Destroy core land units.</span>
+        </button>
+      </div>
+
+      <div id="difficultyButtons" class="difficulty-grid">
+        <button class="diff-btn" data-difficulty="easy" type="button">
+          <strong>Beginner</strong>
+          <span>Depth 4, no MCTS.</span>
+        </button>
+        <button class="diff-btn" data-difficulty="medium" type="button">
+          <strong>Intermediate</strong>
+          <span>Depth 6, no MCTS.</span>
+        </button>
+        <button class="diff-btn" data-difficulty="hard" type="button">
+          <strong>Expert</strong>
+          <span>Depth 8 with MCTS.</span>
+        </button>
+      </div>
+
+      <div id="sideButtons" class="side-grid">
+        <button class="side-btn" data-side="red" type="button">PLAY AS RED</button>
+        <button class="side-btn" data-side="blue" type="button">PLAY AS BLUE</button>
+      </div>
+
+      <section id="rulesPanel" class="rules-panel" aria-live="polite">
+        <h3 id="rulesTitle">Rules of Commander Chess</h3>
+        <p id="rulesSource" class="rules-source">Based on Commander Chess Rules (revised version).</p>
+        <ul class="rules-list">
+          <li id="rulesGoal">Goal: defeat the opponent's Commander by strategy and tactics.</li>
+          <li id="rulesBoard">Board: 11x12 with sea, river/reef, and land zones.</li>
+          <li id="rulesPieces">Pieces: land, air, and sea forces with different roles and interactions.</li>
+          <li id="rulesMove">Movement/capture: vertical and horizontal by default; some pieces leap, attack diagonally, or strike without occupying.</li>
+          <li id="rulesCarry">Carrying: some pieces can transport others (piggyback) to create combined attacks.</li>
+          <li id="rulesHero">Heroic piece: a piece that checkmates gains bonus movement/capture power.</li>
+          <li id="rulesModes">Modes: Full Battle (capture Commander), Marine/Air/Land Battle objectives.</li>
+        </ul>
+        <details class="rules-details">
+          <summary id="rulesDetailsSummary">Detailed Rule Highlights</summary>
+          <ul class="rules-detail-list">
+            <li id="rulesDetail1">Two players: RED and BLUE. The core objective is to defeat the opposing Commander.</li>
+            <li id="rulesDetail2">The board uses coordinate-style movement (vertical/horizontal axes), unlike classic square-check chess notation.</li>
+            <li id="rulesDetail3">The battlefield is split into domains (sea, river/reef, land), creating different lanes and choke points.</li>
+            <li id="rulesDetail4">Piece families represent modern forces: infantry, artillery, tanks, anti-air, missiles, aircraft, and warships.</li>
+            <li id="rulesDetail5">Capture mechanics are asymmetric: some units capture by occupying, some bombard from range, and some can leap.</li>
+            <li id="rulesDetail6">Certain attacks can be executed while holding position (stand-and-strike behavior in specific cases).</li>
+            <li id="rulesDetail7">Transport/carrying is allowed for some formations, enabling combined movement and multi-layer tactics.</li>
+            <li id="rulesDetail8">Heroic promotions exist: pieces that achieve decisive Commander attack gain stronger movement/capture options.</li>
+            <li id="rulesDetail9">Documented variants include strategy modes (Marine/Air/Land/Raid) and full-force play.</li>
+            <li id="rulesDetail10">Timed formats are described (for example 15 or 30 minutes) with score-based resolution when no objective is completed.</li>
+            <li id="rulesDetail11">A strategy objective can grant bonus points; final result can depend on objective + material score.</li>
+            <li id="rulesDetail12">Move annotation symbols (capture/check/checkmate/etc.) are defined in the full official rulebook.</li>
+          </ul>
+          <p id="rulesDetailNote" class="rules-detail-note">Some tournament variants in the rulebook may differ from this web demo's mode presets.</p>
+        </details>
+        <details class="rules-details">
+          <summary id="rulesPiecesSummary">Pieces & Movement (Detailed)</summary>
+          <ul class="rules-detail-list rules-piece-list">
+            <li id="pieceRuleC"><strong>C - Commander:</strong> orthogonal movement up to 10; cannot move into direct open line against the enemy Commander.</li>
+            <li id="pieceRuleH"><strong>H - Headquarters:</strong> fixed base piece; normally immobile.</li>
+            <li id="pieceRuleIn"><strong>In - Infantry:</strong> 1 orthogonal square on land.</li>
+            <li id="pieceRuleM"><strong>M - Militia:</strong> 1 square, including diagonal on land.</li>
+            <li id="pieceRuleT"><strong>T - Tank:</strong> up to 2 orthogonal on land; can fire at enemy sea targets up to 2 squares without moving to sea.</li>
+            <li id="pieceRuleE"><strong>E - Engineer:</strong> 1 orthogonal on land; can ferry heavy ground fire units.</li>
+            <li id="pieceRuleA"><strong>A - Artillery:</strong> up to 3 orthogonal (hero may add diagonal); river crossing is restricted unless reef lane or engineer-assisted.</li>
+            <li id="pieceRuleAa"><strong>Aa - Anti-Aircraft:</strong> 1 orthogonal on land; creates anti-air defense zone around itself.</li>
+            <li id="pieceRuleMs"><strong>Ms - Missile:</strong> up to 2 orthogonal movement; can strike orthogonal range 1-2 and adjacent diagonal targets (not Navy/sea).</li>
+            <li id="pieceRuleAf"><strong>Af - Air Force:</strong> flying movement up to 4 in 8 directions; non-hero air can be blocked/shot by enemy anti-air coverage.</li>
+            <li id="pieceRuleN"><strong>N - Navy:</strong> moves on navigable sea/river water up to 4, including diagonal; has ship/ground fire roles and can carry formations.</li>
+          </ul>
+          <p id="pieceRuleHero" class="rules-detail-note">Hero bonus: heroic pieces get +1 range and diagonal capability; heroic air ignores anti-air interception logic.</p>
+          <p id="pieceRuleCarry" class="rules-detail-note">Cargo examples from engine rules: Tank/Air/Navy can carry commander-personnel; Navy supports mixed force transport combinations.</p>
+        </details>
+        <div class="rules-actions">
+          <button id="openRulesDocBtn" class="btn ghost rules-action-btn" type="button">VIEW FULL RULEBOOK (DOCX)</button>
+        </div>
+      </section>
+
+      <button id="startModeBtn" class="btn primary setup-start" type="button">START GAME</button>
+    </div>
+  </section>
+
+  <section id="rulesDocModal" class="rules-doc-modal" role="dialog" aria-modal="true" aria-labelledby="rulesDocTitle" aria-describedby="rulesDocHint" aria-hidden="true">
+    <div class="rules-doc-card" tabindex="-1">
+      <div class="rules-doc-head">
+        <h3 id="rulesDocTitle">Commander Chess Rulebook</h3>
+        <button id="closeRulesDocBtn" class="btn ghost rules-doc-close" type="button">CLOSE</button>
+      </div>
+      <p id="rulesDocHint" class="rules-doc-hint">Preview is shown as HTML for browser compatibility. Download DOCX below.</p>
+      <a id="rulesDocDirectLink" class="btn ghost rules-doc-link" href="/docs/Commander_Chess_Rules.docx" target="_blank" rel="noopener">DOWNLOAD DOCX</a>
+      <iframe id="rulesDocFrame" class="rules-doc-frame" title="Commander Chess rulebook preview"></iframe>
+    </div>
+  </section>
+
+  <main class="app">
+    <header class="titlebar">
+      <div>
+        <p id="mainKicker" class="kicker">Tactical Command Interface</p>
+        <h1>COMMANDER CHESS</h1>
+      </div>
+      <div class="title-actions">
+        <button id="tutorialBtn" class="btn ghost tutorial-replay-btn" type="button">REPLAY TUTORIAL</button>
+        <button id="quickRestartBtn" class="btn ghost quick-restart-btn" type="button" hidden>NEW GAME (SAME SETTINGS)</button>
+        <button id="newBtn" class="btn primary">NEW GAME / MENU</button>
+      </div>
+    </header>
+
+    <section id="statusBar" class="statusbar status-idle">
+      <span class="turn-dot" aria-hidden="true"></span>
+      <div class="status-copy">
+        <div id="status">Press START GAME</div>
+        <div id="meta">Select your side and begin.</div>
+      </div>
+      <div class="status-actions">
+        <button id="retryBtn" class="btn ghost status-retry" type="button" hidden>RETRY</button>
+        <div id="statusTag" class="status-tag">IDLE</div>
+      </div>
+    </section>
+    <div id="statusLive" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <section class="layout">
+      <section class="board-panel">
+        <div class="board-stage">
+          <div id="yCoords" class="coord-y" aria-hidden="true"></div>
+
+          <div class="board-frame">
+            <div id="board" class="board" role="grid" aria-rowcount="12" aria-colcount="11" aria-label="Commander chess board"></div>
+            <div id="riverLabel" class="river-label">~ ~ ~ RIVER / SONG ~ ~ ~</div>
+          </div>
+
+          <div id="xCoords" class="coord-x" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <aside class="side-panel">
+        <section class="card">
+          <h2 id="controlDeckTitle">Control Deck</h2>
+          <label class="field field-theme-prominent" for="themeSelect">
+            <span id="themeFieldLabel">Theme</span>
+            <select id="themeSelect" class="theme-select">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <label class="field" for="sideSelect">
+            <span id="sideFieldLabel">Player Side</span>
+            <select id="sideSelect">
+              <option value="red">Play Red</option>
+              <option value="blue">Play Blue</option>
+            </select>
+          </label>
+          <label class="field" for="difficultySelect">
+            <span id="difficultyFieldLabel">Difficulty</span>
+            <select id="difficultySelect">
+              <option value="easy">Beginner</option>
+              <option value="medium">Intermediate</option>
+              <option value="hard">Expert</option>
+            </select>
+          </label>
+          <div class="control-actions">
+            <button id="botBtn" class="btn ghost">FORCE BOT MOVE</button>
+            <button id="flipBtn" class="btn ghost" type="button">FLIP BOARD</button>
+          </div>
+        </section>
+
+        <section class="card settings-card">
+          <h2 id="settingsTitle">Experience</h2>
+          <label class="field" for="boardSkinSelect">
+            <span id="boardSkinLabel">Board Skin</span>
+            <select id="boardSkinSelect">
+              <option value="classic">Classic Grid</option>
+              <option value="warroom">War Room</option>
+              <option value="nightops">Night Ops</option>
+            </select>
+          </label>
+          <label class="field" for="pieceThemeSelect">
+            <span id="pieceThemeLabel">Piece Theme</span>
+            <select id="pieceThemeSelect">
+              <option value="sprite">Illustrated</option>
+              <option value="vector">Vector Badges</option>
+              <option value="minimal">Minimal Glyphs</option>
+            </select>
+          </label>
+          <label class="field switch-field" for="soundToggle">
+            <span id="soundToggleLabel">Enable Sound</span>
+            <input id="soundToggle" type="checkbox" checked />
+          </label>
+          <label class="field" for="soundVolumeRange">
+            <span id="soundVolumeLabel">Sound Volume</span>
+            <input id="soundVolumeRange" class="range-input" type="range" min="0" max="100" step="5" value="90" />
+          </label>
+          <label class="field switch-field" for="animToggle">
+            <span id="animToggleLabel">Enable Animations</span>
+            <input id="animToggle" type="checkbox" checked />
+          </label>
+          <label class="field switch-field" for="moveHintsToggle">
+            <span id="moveHintsLabel">Highlight Legal Moves</span>
+            <input id="moveHintsToggle" type="checkbox" checked />
+          </label>
+        </section>
+
+        <section class="card">
+          <h2 id="telemetryTitle">Telemetry</h2>
+          <dl class="stats">
+            <div><dt id="statLabelYou">You</dt><dd id="statYou">-</dd></div>
+            <div><dt id="statLabelDifficulty">Difficulty</dt><dd id="statDifficulty">-</dd></div>
+            <div><dt id="statLabelTurn">Turn</dt><dd id="statTurn">-</dd></div>
+            <div><dt id="statLabelLegal">Legal Moves</dt><dd id="statLegal">-</dd></div>
+            <div><dt id="statLabelPieces">Active Pieces</dt><dd id="statPieces">-</dd></div>
+            <div><dt id="statLabelSelection">Selection</dt><dd id="statSelection">None</dd></div>
+          </dl>
+        </section>
+
+        <section class="card">
+          <h2 id="historyTitle">Move History</h2>
+          <div class="history-nav">
+            <button id="histPrevBtn" class="btn ghost history-btn" type="button" aria-label="Previous move">&lt;</button>
+            <button id="histLiveBtn" class="btn ghost history-btn" type="button" aria-label="Go to current position">LIVE</button>
+            <button id="histNextBtn" class="btn ghost history-btn" type="button" aria-label="Next move">&gt;</button>
+          </div>
+          <ol id="historyList" class="history-list"></ol>
+        </section>
+
+        <section class="card">
+          <h2 id="legendTitle">Legend</h2>
+          <ul class="legend-list">
+            <li><span class="swatch swatch-dot"></span><span id="legendLegalText">Legal destination</span></li>
+            <li><span class="swatch swatch-select"></span><span id="legendSelectedText">Selected piece</span></li>
+            <li><span class="swatch swatch-capture"></span><span id="legendCaptureText">Capture destination</span></li>
+            <li><span class="swatch swatch-last"></span><span id="legendLastMoveText">Last move target</span></li>
+            <li><span class="swatch swatch-hero"></span><span id="legendHeroText">Heroic piece</span></li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2 id="aboutTitle">About</h2>
+          <ul class="about-list">
+            <li><span id="aboutNameLabel">My name:</span> Chris</li>
+            <li><span id="aboutPositionLabel">Position:</span> <span id="aboutPositionValue">Vibe coder</span></li>
+          </ul>
+        </section>
+      </aside>
+    </section>
+  </main>
+
+  <section id="tutorialModal" class="tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle" aria-describedby="tutorialText" aria-hidden="true">
+    <div class="tutorial-card" tabindex="-1">
+      <div class="tutorial-head">
+        <div>
+          <p id="tutorialKicker" class="kicker">Interactive Tutorial</p>
+          <h3 id="tutorialTitle">Welcome to Commander Chess</h3>
+          <p id="tutorialProgress" class="tutorial-progress">Step 1 / 14</p>
+        </div>
+        <button id="skipTutorialBtn" class="btn ghost tutorial-skip-btn" type="button">SKIP TUTORIAL</button>
+      </div>
+
+      <p id="tutorialText" class="tutorial-text">Learn all piece rules with unlimited practice moves in this interactive tutorial.</p>
+
+      <div class="tutorial-board-wrap">
+        <div id="tutorialBoard" class="tutorial-board" role="grid" aria-rowcount="12" aria-colcount="11" aria-label="Tutorial board"></div>
+      </div>
+
+      <div class="tutorial-actions">
+        <button id="tutorialPrevBtn" class="btn ghost" type="button">BACK</button>
+        <button id="tutorialReplayBtn" class="btn ghost" type="button">REPLAY</button>
+        <button id="tutorialStartBtn" class="btn primary" type="button">START TUTORIAL</button>
+        <button id="tutorialNextBtn" class="btn primary" type="button">NEXT</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="/app.86ab9a96206f.js"></script>
+</body>
+</html>
