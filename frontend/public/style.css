@@ -325,6 +325,15 @@ body {
   font-family: "IBM Plex Mono", monospace;
 }
 
+.setup-rules-mobile-actions {
+  display: none;
+  margin-top: 12px;
+}
+
+.setup-rules-toggle {
+  width: 100%;
+}
+
 .rules-panel {
   margin-top: 12px;
   padding: 12px;
@@ -975,6 +984,10 @@ body {
   position: relative;
   border: 3px solid var(--c-border);
   box-shadow: inset 0 0 0 1px rgba(47, 58, 74, 0.16);
+  transform: scale(var(--board-scale, 1));
+  transform-origin: center center;
+  transition: transform 120ms ease;
+  touch-action: manipulation;
 }
 
 .board {
@@ -1582,6 +1595,58 @@ html[data-theme="dark"] .field-theme-prominent {
   .difficulty-grid { grid-template-columns: 1fr; }
   .online-code-actions { grid-template-columns: 1fr; }
   .rules-doc-frame { min-height: 320px; }
+}
+
+@media (max-width: 768px) {
+  .setup-rules-mobile-actions {
+    display: block;
+  }
+  #setupOverlay .rules-panel {
+    display: none;
+  }
+  #setupOverlay.mobile-rules-open .rules-panel {
+    display: block;
+  }
+  .board-panel {
+    padding: 8px;
+  }
+  .board-stage {
+    --cell: clamp(38px, 8.2vw, 52px);
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 0;
+    width: 100%;
+    max-width: 95vw;
+    margin: 0 auto;
+    justify-items: center;
+  }
+  .coord-y,
+  .coord-x {
+    display: none;
+  }
+  .board-frame {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+    max-width: 95vw;
+    height: auto;
+    aspect-ratio: 11 / 12;
+  }
+  .board {
+    width: 100%;
+    max-width: 95vw;
+    height: auto;
+    aspect-ratio: 11 / 12;
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+    grid-template-rows: repeat(12, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) and (pointer: coarse) {
+  .piece {
+    width: 92%;
+    height: 92%;
+  }
 }
 
 @media (max-width: 680px) {

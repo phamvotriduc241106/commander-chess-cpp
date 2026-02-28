@@ -20,6 +20,8 @@ const I18N = {
     setupKicker: 'Mode Setup',
     setupTitle: 'Choose Language, Player Mode, Mode, Difficulty, and Side',
     setupSub: 'Choose your settings, then start the match.',
+    setupRulesOpen: 'RULES',
+    setupRulesClose: 'CLOSE RULES',
     languageLabel: 'Language',
     playerModeLabel: 'Player Mode',
     onlinePanelTitle: 'Online Match',
@@ -279,6 +281,8 @@ const I18N = {
     setupKicker: 'Thiết lập trận',
     setupTitle: 'Chọn ngôn ngữ, chế độ chơi, chế độ, độ khó và phe',
     setupSub: 'Chọn các tùy chọn rồi bắt đầu ván đấu.',
+    setupRulesOpen: 'LUẬT',
+    setupRulesClose: 'ĐÓNG LUẬT',
     languageLabel: 'Ngôn ngữ',
     playerModeLabel: 'Chế độ chơi',
     onlinePanelTitle: 'Trận đấu trực tuyến',
@@ -726,6 +730,8 @@ const TUTORIAL_INITIAL_PIECES = Object.freeze([
 ]);
 
 const boardEl = document.getElementById('board');
+const boardStageEl = document.querySelector('.board-stage');
+const boardFrameEl = document.querySelector('.board-frame');
 const statusBarEl = document.getElementById('statusBar');
 const statusEl = document.getElementById('status');
 const statusTagEl = document.getElementById('statusTag');
@@ -769,6 +775,7 @@ const setupOverlayEl = document.getElementById('setupOverlay');
 const setupKickerEl = document.getElementById('setupKicker');
 const setupTitleEl = document.getElementById('setupTitle');
 const setupSubEl = document.getElementById('setupSub');
+const setupRulesToggleBtn = document.getElementById('setupRulesToggleBtn');
 const languageLabelEl = document.getElementById('languageLabel');
 const languageButtonsEl = document.getElementById('languageButtons');
 const setupThemeLabelEl = document.getElementById('setupThemeLabel');
@@ -899,6 +906,9 @@ let selectedSide = 'red';
 let selectedDifficulty = 'medium';
 let selectedTheme = 'system';
 let boardFlipped = false;
+let boardScale = 1;
+let boardPinch = null;
+let setupRulesMenuOpen = false;
 let startGamePending = false;
 let pendingRetryAction = null;
 let hasStartedGame = false;
@@ -1713,9 +1723,71 @@ function boardCoordFromView(viewCol, viewRow) {
   };
 }
 
+function boardIsZoomed() {
+  return boardScale > 1.01;
+}
+
+function setBoardScale(nextScale, options = null) {
+  const opts = options && typeof options === 'object' ? options : Object.create(null);
+  const skipLabelUpdate = !!opts.skipLabelUpdate;
+  const numeric = Number(nextScale);
+  const clamped = Number.isFinite(numeric) ? Math.max(1, Math.min(2.6, numeric)) : 1;
+  boardScale = clamped;
+  if (boardStageEl) boardStageEl.classList.toggle('is-zoomed', boardIsZoomed());
+  if (boardFrameEl) {
+    boardFrameEl.style.setProperty('--board-scale', String(clamped));
+  }
+  if (!skipLabelUpdate) updateFlipButtonLabel();
+}
+
+function resetBoardViewState() {
+  const needsReset = boardFlipped || boardIsZoomed();
+  if (!needsReset) return false;
+  boardFlipped = false;
+  boardPinch = null;
+  setBoardScale(1, { skipLabelUpdate: true });
+  renderCoords();
+  drawBoard();
+  updateFlipButtonLabel();
+  return true;
+}
+
+function touchDistance(a, b) {
+  const dx = b.clientX - a.clientX;
+  const dy = b.clientY - a.clientY;
+  return Math.hypot(dx, dy);
+}
+
+function onBoardPinchStart(ev) {
+  if (ev.touches.length !== 2) return;
+  const [a, b] = ev.touches;
+  const dist = touchDistance(a, b);
+  if (!(dist > 0)) return;
+  boardPinch = {
+    startDistance: dist,
+    startScale: boardScale
+  };
+}
+
+function onBoardPinchMove(ev) {
+  if (!boardPinch || ev.touches.length !== 2) return;
+  const [a, b] = ev.touches;
+  const dist = touchDistance(a, b);
+  if (!(dist > 0)) return;
+  ev.preventDefault();
+  const nextScale = boardPinch.startScale * (dist / boardPinch.startDistance);
+  setBoardScale(nextScale);
+}
+
+function onBoardPinchEnd(ev) {
+  if (ev.touches.length < 2) {
+    boardPinch = null;
+  }
+}
+
 function updateFlipButtonLabel() {
   if (!flipBtn) return;
-  flipBtn.textContent = boardFlipped ? t('resetBoardView') : t('flipBoard');
+  flipBtn.textContent = (boardFlipped || boardIsZoomed()) ? t('resetBoardView') : t('flipBoard');
 }
 
 function rulesDocUrl() {
@@ -3392,6 +3464,19 @@ function updateBotButtonState() {
   botBtn.disabled = disabled;
 }
 
+function updateSetupRulesToggleLabel() {
+  if (!setupRulesToggleBtn) return;
+  const label = setupRulesMenuOpen ? t('setupRulesClose') : t('setupRulesOpen');
+  setupRulesToggleBtn.textContent = setupRulesMenuOpen ? label : `☰ ${label}`;
+  setupRulesToggleBtn.setAttribute('aria-expanded', setupRulesMenuOpen ? 'true' : 'false');
+}
+
+function setSetupRulesMenuOpen(open) {
+  setupRulesMenuOpen = !!open;
+  if (setupOverlayEl) setupOverlayEl.classList.toggle('mobile-rules-open', setupRulesMenuOpen);
+  updateSetupRulesToggleLabel();
+}
+
 function applyLocalizedStaticText() {
   document.documentElement.lang = selectedLanguage;
   document.title = t('documentTitle');
@@ -3403,6 +3488,7 @@ function applyLocalizedStaticText() {
   if (setupKickerEl) setupKickerEl.textContent = t('setupKicker');
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
+  updateSetupRulesToggleLabel();
   if (languageLabelEl) languageLabelEl.textContent = t('languageLabel');
   if (setupThemeLabelEl) setupThemeLabelEl.textContent = t('themeField');
   if (playerModeLabelEl) playerModeLabelEl.textContent = t('playerModeLabel');
@@ -3659,6 +3745,7 @@ function updateSetupSelectionUI() {
 }
 
 function openSetupMenu() {
+  setSetupRulesMenuOpen(false);
   setupOverlayEl.classList.add('show');
   if (joinMatchInputEl && onlineQueryMatchCode && !joinMatchInputEl.value) {
     joinMatchInputEl.value = onlineQueryMatchCode;
@@ -3667,6 +3754,7 @@ function openSetupMenu() {
 }
 
 function closeSetupMenu() {
+  setSetupRulesMenuOpen(false);
   setupOverlayEl.classList.remove('show');
   closeRulesDocModal();
 }
@@ -3897,6 +3985,12 @@ startModeBtn.addEventListener('click', () => {
   runStartGame(launchConfig).catch(err => showError(err, () => runStartGame(launchConfig)));
 });
 
+if (setupRulesToggleBtn) {
+  setupRulesToggleBtn.addEventListener('click', () => {
+    setSetupRulesMenuOpen(!setupRulesMenuOpen);
+  });
+}
+
 if (quickRestartBtn) {
   quickRestartBtn.addEventListener('click', () => {
     if (!hasStartedGame) return;
@@ -4125,7 +4219,8 @@ if (tutorialModalEl) {
 
 if (flipBtn) {
   flipBtn.addEventListener('click', () => {
-    boardFlipped = !boardFlipped;
+    if (resetBoardViewState()) return;
+    boardFlipped = true;
     renderCoords();
     drawBoard();
     updateFlipButtonLabel();
@@ -4148,6 +4243,13 @@ if (rulesDocModalEl) {
   rulesDocModalEl.addEventListener('click', (ev) => {
     if (ev.target === rulesDocModalEl) closeRulesDocModal();
   });
+}
+
+if (boardFrameEl) {
+  boardFrameEl.addEventListener('touchstart', onBoardPinchStart, { passive: false });
+  boardFrameEl.addEventListener('touchmove', onBoardPinchMove, { passive: false });
+  boardFrameEl.addEventListener('touchend', onBoardPinchEnd);
+  boardFrameEl.addEventListener('touchcancel', onBoardPinchEnd);
 }
 
 sideSelect.addEventListener('change', () => {
@@ -4257,6 +4359,8 @@ histLiveBtn.addEventListener('click', () => {
 
 initializeThemePreference();
 initializeUiPrefs();
+setBoardScale(1, { skipLabelUpdate: true });
+setSetupRulesMenuOpen(false);
 renderCoords();
 setOnlineStatus('onlineStatusIdle', null, true);
 applyLocalizedStaticText();
@@ -4282,6 +4386,11 @@ window.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
   if (!tutorialActive) return;
   closeTutorial(true);
+});
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768 && setupRulesMenuOpen) {
+    setSetupRulesMenuOpen(false);
+  }
 });
 window.addEventListener('beforeunload', () => {
   clearOnlineMatchSubscription();
