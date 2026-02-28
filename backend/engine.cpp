@@ -123,6 +123,21 @@ static void apply_difficulty_to_state(GameState& state) {
     apply_difficulty_to_core(state.difficulty);
 }
 
+// Respect per-request search overrides (depth/time) without rewriting state defaults.
+static void apply_runtime_search_to_core(const GameState& state) {
+    EngineConfig cfg = get_engine_config();
+    cfg.max_depth = std::max(1, state.bot_depth);
+    int ms = (int)(state.bot_time_limit * 1000.0 + 0.5);
+    if (ms < 10) ms = 10;
+    cfg.time_limit_ms = ms;
+    cfg.use_mcts = (normalize_difficulty(state.difficulty) == "hard");
+#if defined(__EMSCRIPTEN__)
+    cfg.use_mcts = false;
+    cfg.force_single_thread = true;
+#endif
+    set_engine_config(cfg);
+}
+
 static ActionStatus finalize_apply(GameState& state, PieceList& pieces_after, const std::string& mover) {
     ActionStatus st;
     st.ok = true;
@@ -239,7 +254,8 @@ ActionStatus apply_move(GameState& state, const Move& move) {
 Move bot_move(GameState& state) {
     ensure_engine_init();
     apply_mode_to_core(state.game_mode);
-    apply_difficulty_to_state(state);
+    state.difficulty = normalize_difficulty(state.difficulty);
+    apply_runtime_search_to_core(state);
 
     if (state.game_over) return Move{-1, -1, -1};
 
