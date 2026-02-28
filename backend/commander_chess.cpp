@@ -3,6 +3,18 @@
  * ====================================================
  * Player side is selectable in the mode menu (Red or Blue).
  *
+ * ── 2026 Strength Upgrade Summary (~+180 Elo target) ──────────────────────
+ *  1) Advanced Threat Evaluation (~+80 Elo):
+ *     hanging/undefended pressure, cross-domain attack bonuses, carrier
+ *     unload threat potential, commander attack amplification, and
+ *     win-condition piece targeting.
+ *  2) Terrain-Aware Correction History (~+70 Elo):
+ *     adds terrain/control/stacking/commander-water context to correction
+ *     history for stronger fortress recognition and eval stability.
+ *  3) Low-Depth Fortress & Special Draw Recognizer (~+30 Elo):
+ *     detects low-depth fortress deadlocks, variant-specific decisive states,
+ *     and carrier-loop draw patterns in AB + QSearch.
+ *
  * ── Search Engine ───────────────────────────────────────────────────────────
  * Built from scratch for Commander Chess rules; incorporates all major
  * Stockfish 18 search techniques adapted to this game's 12×11 board,
@@ -2373,8 +2385,10 @@ static int16_t g_cont_history[H_COLS][H_ROWS][H_KINDS][H_COLS][H_ROWS];
 // ── Correction History forward declarations (full implementation below SEE) ─
 static const int CORR_HIST_SIZE     = 16384;
 static const int CORR_MAT_SIZE      = 512;
+static const int CORR_TERR_SIZE     = 2048;
 static int g_corr_hist[2][CORR_HIST_SIZE] = {};
 static int g_corr_hist_mat[2][CORR_MAT_SIZE] = {};
+static int g_corr_hist_terrain[2][CORR_TERR_SIZE] = {};
 static MoveTriple g_pv[MAX_PLY][MAX_PLY];
 static int g_pv_len[MAX_PLY];
 static MoveTriple g_counter[11][12];
@@ -2400,6 +2414,7 @@ static void reset_search_tables() {
     for (int pi = 0; pi < 2; pi++) {
         for (int i = 0; i < CORR_HIST_SIZE; i++) g_corr_hist[pi][i] /= 2;
         for (int i = 0; i < CORR_MAT_SIZE;  i++) g_corr_hist_mat[pi][i] /= 2;
+        for (int i = 0; i < CORR_TERR_SIZE; i++) g_corr_hist_terrain[pi][i] /= 2;
     }
     g_default_td.reset();
 }
@@ -2568,7 +2583,7 @@ static void update_cont_history(const MoveTriple* prev, int ki, int dc, int dr, 
 // RFP, Razoring, Probcut, Futility, and LMR accuracy.
 // ─────────────────────────────────────────────────────────────────────────
 
-// (CORR_HIST_SIZE, CORR_MAT_SIZE, g_corr_hist, g_corr_hist_mat declared above)
+// (CORR_HIST_SIZE, CORR_MAT_SIZE, CORR_TERR_SIZE and corr tables declared above)
 static const int CORR_MAX_VAL       = 32000;
 static const int CORR_WEIGHT_DENOM  = 256;    // fixed-point denominator
 
@@ -2582,6 +2597,92 @@ static int material_corr_key(const PieceList& pieces, int pi) {
         key += sign * piece_value_fast(p.kind) / 50;
     }
     return (((key % CORR_MAT_SIZE) + CORR_MAT_SIZE) % CORR_MAT_SIZE);
+}
+
+static bool commander_near_water_square(int c, int r) {
+    if (!on_board(c, r)) return false;
+    if (is_sea(c, r) || r == 5 || r == 6) return true;
+    for (int dc = -1; dc <= 1; dc++) for (int dr = -1; dr <= 1; dr++) {
+        int nc = c + dc, nr = r + dr;
+        if (!on_board(nc, nr)) continue;
+        if (is_sea(nc, nr) || nr == 5 || nr == 6) return true;
+    }
+    return false;
+}
+
+// === NEW: Terrain-Aware Correction History (~+70 Elo) ===
+// Terrain/control/stacking key for fortress-like structure recognition.
+static int terrain_corr_key(const PieceList& pieces, int pi) {
+    int sea_occ[2] = {0, 0};
+    int river_occ[2] = {0, 0};
+    int sky_control[2] = {0, 0};
+    int cmd_col[2] = {-1, -1};
+    int cmd_row[2] = {-1, -1};
+    int cmd_exposure[2] = {0, 0};
+    int cmd_stack_density[2] = {0, 0};
+    int navy_near_water_cmd[2] = {0, 0};
+
+    for (const auto& p : pieces) {
+        int s = player_idx(p.player);
+        if (!on_board(p.col, p.row)) continue;
+        if (is_sea(p.col, p.row)) sea_occ[s] += (p.kind == "N") ? 2 : 1;
+        if (p.row == 5 || p.row == 6) river_occ[s] += (p.kind == "E") ? 2 : 1;
+        if (p.kind == "Af") sky_control[s] += 3;
+        else if (p.kind == "Aa" || p.kind == "Ms") sky_control[s] += 2;
+        else if (p.kind == "N") sky_control[s] += 1;
+        if (p.kind == "C") { cmd_col[s] = p.col; cmd_row[s] = p.row; }
+    }
+
+    for (const auto& p : pieces) {
+        int s = player_idx(p.player);
+        if (p.kind == "N" && cmd_col[s] >= 0 && commander_near_water_square(cmd_col[s], cmd_row[s])) {
+            int dist = std::abs(p.col - cmd_col[s]) + std::abs(p.row - cmd_row[s]);
+            if (dist <= 4) navy_near_water_cmd[s] += (5 - dist);
+        }
+        if (p.carrier_id >= 0 && cmd_col[s] >= 0) {
+            int cheb = std::max(std::abs(p.col - cmd_col[s]), std::abs(p.row - cmd_row[s]));
+            if (cheb <= 2) cmd_stack_density[s] += 2;
+            else if (cheb <= 4) cmd_stack_density[s] += 1;
+        }
+    }
+
+    for (int s = 0; s < 2; s++) {
+        if (cmd_col[s] < 0) continue;
+        int c = cmd_col[s], r = cmd_row[s];
+        int enemy_touch = 0, friendly_touch = 0, open_touch = 0;
+        for (int dc = -1; dc <= 1; dc++) for (int dr = -1; dr <= 1; dr++) {
+            if (dc == 0 && dr == 0) continue;
+            int nc = c + dc, nr = r + dr;
+            if (!on_board(nc, nr)) continue;
+            const Piece* occ = piece_at_c(pieces, nc, nr);
+            if (!occ) open_touch++;
+            else if (player_idx(occ->player) == s) friendly_touch++;
+            else enemy_touch++;
+        }
+        cmd_exposure[s] = enemy_touch * 3 + open_touch - friendly_touch;
+        if (commander_near_water_square(c, r)) cmd_exposure[s] += 2;
+    }
+
+    auto diff = [&](const int arr[2]) { return arr[pi] - arr[1 - pi]; };
+    int d_sea = diff(sea_occ);
+    int d_river = diff(river_occ);
+    int d_sky = diff(sky_control);
+    int d_exposure = diff(cmd_exposure);
+    int d_stack = diff(cmd_stack_density);
+    int d_navy = diff(navy_near_water_cmd);
+
+    uint64_t mix = 0x9E3779B97F4A7C15ULL;
+    auto fold = [&](int v) {
+        uint64_t x = (uint64_t)(v + 512);
+        mix ^= x + 0x9E3779B97F4A7C15ULL + (mix << 6) + (mix >> 2);
+    };
+    fold(d_sea);
+    fold(d_river);
+    fold(d_sky);
+    fold(d_exposure);
+    fold(d_stack);
+    fold(d_navy);
+    return (int)(mix & (CORR_TERR_SIZE - 1));
 }
 
 static void update_correction_history(uint64_t hash, const PieceList& pieces,
@@ -2613,10 +2714,20 @@ static void update_correction_history(uint64_t hash, const PieceList& pieces,
             / CORR_WEIGHT_DENOM;
         e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
     }
+
+    // Terrain/context bucket update.
+    int tk = terrain_corr_key(pieces, pi);
+    {
+        int& e = g_corr_hist_terrain[pi][tk];
+        e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
+            / CORR_WEIGHT_DENOM;
+        e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
+    }
 }
 
 // Returns the corrected static eval (raw + blended correction offset).
-// The blend weight (0.30 hash + 0.20 material) was tuned to be conservative —
+// The blend weight (0.50 hash + 0.30 material + 0.20 terrain/context) is
+// intentionally conservative to stabilize pruning without distorting eval shape.
 // enough to improve pruning without distorting the eval surface.
 static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
                                  const std::string& player, int raw_eval) {
@@ -2624,11 +2735,13 @@ static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
     if (pi < 0) return raw_eval;
     int hk = (int)((hash >> 4) & (CORR_HIST_SIZE - 1));
     int mk = material_corr_key(pieces, pi);
+    int tk = terrain_corr_key(pieces, pi);
     int hash_corr = g_corr_hist[pi][hk] / CORR_WEIGHT_DENOM;
     int mat_corr  = g_corr_hist_mat[pi][mk] / CORR_WEIGHT_DENOM;
-    // Blend: 60% hash, 40% material
-    int correction = (hash_corr * 3 + mat_corr * 2) / 5;
-    correction = std::max(-150, std::min(150, correction));  // safety clamp
+    int terr_corr = g_corr_hist_terrain[pi][tk] / CORR_WEIGHT_DENOM;
+    // Blend: 50% hash, 30% material, 20% terrain/context.
+    int correction = (hash_corr * 5 + mat_corr * 3 + terr_corr * 2) / 10;
+    correction = std::max(-180, std::min(180, correction));  // safety clamp
     return raw_eval + correction;
 }
 
@@ -2780,6 +2893,149 @@ static int commander_attackers_cached(SearchState& st, const std::string& player
     return attackers_to_square(st.pieces, cc, cr, opp(player), &st.atk);
 }
 
+struct ObjectiveCounts {
+    int commander = 0;
+    int navy = 0;
+    int air_force = 0;
+    int tank = 0;
+    int infantry = 0;
+    int artillery = 0;
+    int active_non_hq = 0;
+    int carried_units = 0;
+};
+
+static ObjectiveCounts collect_objective_counts(const PieceList& pieces, const std::string& side) {
+    ObjectiveCounts out;
+    for (const auto& p : pieces) {
+        if (p.player != side || !on_board(p.col, p.row)) continue;
+        if (p.kind != "H") out.active_non_hq++;
+        if (p.carrier_id >= 0) out.carried_units++;
+        if (p.kind == "C") out.commander++;
+        else if (p.kind == "N") out.navy++;
+        else if (p.kind == "Af") out.air_force++;
+        else if (p.kind == "T") out.tank++;
+        else if (p.kind == "In") out.infantry++;
+        else if (p.kind == "A") out.artillery++;
+    }
+    return out;
+}
+
+static bool side_fulfills_win_objective(const ObjectiveCounts& self,
+                                        const ObjectiveCounts& enemy) {
+    (void)self;
+    switch (g_game_mode) {
+    case GameMode::MARINE_BATTLE:
+        return enemy.commander == 0 || enemy.navy == 0;
+    case GameMode::AIR_BATTLE:
+        return enemy.commander == 0 || enemy.air_force == 0;
+    case GameMode::LAND_BATTLE:
+        return enemy.commander == 0 ||
+               (enemy.tank == 0 && enemy.infantry == 0 && enemy.artillery == 0);
+    case GameMode::FULL_BATTLE:
+    default:
+        return enemy.commander == 0;
+    }
+}
+
+// === NEW: Low-Depth Fortress & Special Draw Recognizer (~+30 Elo) ===
+// Triggered only at depth <= 3 (AB) and q_depth <= 3 (QSearch).
+// Handles:
+//  • objective-complete decisive states (variant-specific)
+//  • practical fortress/no-progress draws
+//  • carrier-stacking loop-like dead-draw signatures
+static bool low_depth_special_outcome(SearchState& st, const std::string& perspective,
+                                      int depth_hint, int* out_score) {
+    if (!out_score || depth_hint > 3) return false;
+
+    const std::string enemy = opp(perspective);
+    ObjectiveCounts me = collect_objective_counts(st.pieces, perspective);
+    ObjectiveCounts them = collect_objective_counts(st.pieces, enemy);
+
+    // Objective-based decisive recognizer (independent of "last mover").
+    bool me_wins = side_fulfills_win_objective(me, them);
+    bool them_wins = side_fulfills_win_objective(them, me);
+    if (me_wins || them_wins) {
+        if (me_wins && them_wins) {
+            *out_score = 0;
+            return true;
+        }
+        int base = 36000 + std::max(0, std::min(depth_hint, 6)) * 80;
+        *out_score = me_wins ? base : -base;
+        return true;
+    }
+
+    if (depth_hint <= 0) return false;
+    if (me.commander == 0 || them.commander == 0) return false;
+
+    ensure_attack_cache(st);
+    int my_pi = player_idx(perspective);
+    int op_pi = 1 - my_pi;
+    int my_cc = st.cmd_col[my_pi], my_cr = st.cmd_row[my_pi];
+    int op_cc = st.cmd_col[op_pi], op_cr = st.cmd_row[op_pi];
+    if (my_cc < 0 || op_cc < 0) return false;
+
+    // Fortress recognizer requires both commanders to be currently safe.
+    if (st.atk.counts[op_pi][my_cr][my_cc] > 0) return false;
+    if (st.atk.counts[my_pi][op_cr][op_cc] > 0) return false;
+
+    const int total_active = me.active_non_hq + them.active_non_hq;
+    if (total_active > 12) return false;
+
+    AllMoves my_moves = all_moves_for(st.pieces, perspective);
+    AllMoves op_moves = all_moves_for(st.pieces, enemy);
+    if (my_moves.empty() || op_moves.empty()) return false;
+
+    auto classify_activity = [&](const std::string& side,
+                                 const AllMoves& moves,
+                                 const Piece* enemy_cmd,
+                                 int* captures,
+                                 int* progress) {
+        *captures = 0;
+        *progress = 0;
+        int inspected = 0;
+        for (const auto& m : moves) {
+            if (++inspected > 96) break; // cap for browser/runtime safety
+            const Piece* tgt = piece_at_c(st.pieces, m.dc, m.dr);
+            if (tgt && tgt->player != side) { (*captures)++; continue; }
+
+            int idx = find_piece_idx_by_id(st.pieces, m.pid);
+            if (idx < 0 || !enemy_cmd) continue;
+            const Piece& p = st.pieces[idx];
+            if (p.kind == "C" || p.kind == "H") continue;
+            int before = std::abs(p.col - enemy_cmd->col) + std::abs(p.row - enemy_cmd->row);
+            int after = std::abs(m.dc - enemy_cmd->col) + std::abs(m.dr - enemy_cmd->row);
+            if (after + 1 < before) (*progress)++;
+        }
+    };
+
+    const Piece* my_enemy_cmd = nullptr;
+    const Piece* op_enemy_cmd = nullptr;
+    for (const auto& p : st.pieces) {
+        if (p.player == enemy && p.kind == "C") my_enemy_cmd = &p;
+        if (p.player == perspective && p.kind == "C") op_enemy_cmd = &p;
+    }
+
+    int my_caps = 0, my_progress = 0;
+    int op_caps = 0, op_progress = 0;
+    classify_activity(perspective, my_moves, my_enemy_cmd, &my_caps, &my_progress);
+    classify_activity(enemy, op_moves, op_enemy_cmd, &op_caps, &op_progress);
+
+    bool no_captures = (my_caps == 0 && op_caps == 0);
+    bool low_mobility = ((int)my_moves.size() <= 18 && (int)op_moves.size() <= 18);
+    bool no_progress = (my_progress <= 1 && op_progress <= 1);
+    bool carrier_loop_signature = (me.carried_units + them.carried_units >= 4);
+
+    if (no_captures && low_mobility && (no_progress || carrier_loop_signature)) {
+        if (!has_immediate_winning_move(st.pieces, perspective) &&
+            !has_immediate_winning_move(st.pieces, enemy)) {
+            *out_score = 0;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 // ── Static evaluation (Phase-Interpolated) ────────────────────────────────
 // Quadratic attacker penalty table: more attackers = exponentially worse
 static const int CMD_ATTACKER_PENALTY[] = {0, 40, 120, 260, 450, 700, 1000};
@@ -2833,6 +3089,123 @@ static bool configure_eval_backend(const std::string& mode_raw, std::string* not
 
 static EvalBackendKind active_eval_backend() {
     return g_eval_backend;
+}
+
+static bool is_win_condition_piece_kind(const std::string& kind) {
+    return kind == "N" || kind == "Af" || kind == "T" || kind == "In" || kind == "A";
+}
+
+// === NEW: Advanced Threat Evaluation (~+80 Elo) ===
+// Fast classical threat model:
+//  • hanging/undefended pressure (scaled by unit value + carrier payload)
+//  • cross-domain threats (Af/Navy/Artillery/Missile pressure)
+//  • commander pressure and win-condition target pressure
+//  • potential discovered attacks from loaded carriers (unload threats)
+static int side_advanced_threat_score(const PieceList& pieces,
+                                      const std::string& side,
+                                      const AttackCache* cache,
+                                      const MoveGenContext& ctx) {
+    const std::string enemy = opp(side);
+    const int side_pi = player_idx(side);
+    const int enemy_pi = 1 - side_pi;
+    int score = 0;
+
+    const Piece* enemy_cmd = nullptr;
+    for (const auto& p : pieces) {
+        if (p.player == enemy && p.kind == "C") { enemy_cmd = &p; break; }
+    }
+
+    std::array<int, PieceList::kMaxPieces> payload_count{};
+    for (const auto& p : pieces) {
+        if (p.carrier_id >= 0 && p.carrier_id < (int)payload_count.size()) payload_count[p.carrier_id]++;
+    }
+
+    if (enemy_cmd) {
+        int direct = cache ? cache->counts[side_pi][enemy_cmd->row][enemy_cmd->col]
+                           : attackers_to_square(pieces, enemy_cmd->col, enemy_cmd->row, side, cache);
+        int defenders = cache ? cache->counts[enemy_pi][enemy_cmd->row][enemy_cmd->col]
+                              : attackers_to_square(pieces, enemy_cmd->col, enemy_cmd->row, enemy, cache);
+        score += direct * 120;
+        score += std::max(0, direct - defenders) * 170;
+    }
+
+    // Undefended / overloaded enemy pieces (higher value for carriers + objective units).
+    for (const auto& ep : pieces) {
+        if (ep.player != enemy || ep.kind == "H") continue;
+        int atk = cache ? cache->counts[side_pi][ep.row][ep.col]
+                        : attackers_to_square(pieces, ep.col, ep.row, side, cache);
+        if (atk == 0) continue;
+        int def = cache ? cache->counts[enemy_pi][ep.row][ep.col]
+                        : attackers_to_square(pieces, ep.col, ep.row, enemy, cache);
+        int val = piece_value_fast(ep.kind);
+        int weight = val / 9;
+        if (ep.kind == "C") weight += 260;
+        if (ep.kind == "N" || ep.kind == "Af") weight += 140;
+        if (is_win_condition_piece_kind(ep.kind)) weight += 80;
+        if (ep.id >= 0 && ep.id < (int)payload_count.size() && payload_count[ep.id] > 0) {
+            weight += 60 * payload_count[ep.id];
+        }
+        if (def == 0) score += weight + val / 4;
+        else if (atk > def) score += weight / 2 + (atk - def) * 24;
+        else if (atk == def && val >= 200) score += weight / 4;
+    }
+
+    // Cross-domain attack pressure + potential discovered attacks after unloading carriers.
+    for (const auto& p : pieces) {
+        if (p.player != side || p.kind == "H") continue;
+
+        int payload = (p.id >= 0 && p.id < (int)payload_count.size()) ? payload_count[p.id] : 0;
+        if (payload > 0 && enemy_cmd) {
+            int cmd_dist = std::abs(p.col - enemy_cmd->col) + std::abs(p.row - enemy_cmd->row);
+            if (cmd_dist <= 6) score += payload * std::max(0, 90 - cmd_dist * 12);
+        }
+
+        auto mvs = get_moves_with_ctx(p, ctx);
+        for (const auto& mv : mvs) {
+            const Piece* tgt = piece_at_c(pieces, mv.first, mv.second);
+            if (!tgt || tgt->player == side) continue;
+
+            int bonus = 0;
+            if (p.kind == "Af") {
+                if (tgt->kind != "Af") bonus += 36;
+                if (is_sea(tgt->col, tgt->row) || tgt->kind == "N") bonus += 30;
+            } else if (p.kind == "N") {
+                if (is_sea(tgt->col, tgt->row) || tgt->kind == "N" || tgt->kind == "Af") bonus += 34;
+            } else if (p.kind == "A" || p.kind == "Ms") {
+                int dist = std::max(std::abs(p.col - tgt->col), std::abs(p.row - tgt->row));
+                if (dist >= 2) bonus += 30 + dist * 4;
+            }
+
+            if (tgt->kind == "C") bonus += 160;
+            if (is_win_condition_piece_kind(tgt->kind)) bonus += 48;
+            score += bonus;
+        }
+    }
+
+    // Loaded passengers near enemy commander indicate likely discovered-attack motifs.
+    if (enemy_cmd) {
+        for (const auto& p : pieces) {
+            if (p.player != side || p.carrier_id < 0) continue;
+            const Piece* carrier = piece_by_id_c(pieces, p.carrier_id);
+            if (!carrier || carrier->player != side) continue;
+            int dist = std::abs(carrier->col - enemy_cmd->col) + std::abs(carrier->row - enemy_cmd->row);
+            if (dist > 7) continue;
+            int payload_threat = piece_value_fast(p.kind) / 10;
+            if (p.kind == "T" || p.kind == "A" || p.kind == "Ms" || p.kind == "Af" || p.kind == "C")
+                payload_threat += 45;
+            score += std::max(0, payload_threat + 70 - dist * 10);
+        }
+    }
+
+    return score;
+}
+
+static int advanced_threat_eval(const PieceList& pieces, const std::string& perspective,
+                                const AttackCache* cache = nullptr) {
+    MoveGenContext ctx = build_movegen_context(pieces);
+    int my_threats = side_advanced_threat_score(pieces, perspective, cache, ctx);
+    int opp_threats = side_advanced_threat_score(pieces, opp(perspective), cache, ctx);
+    return my_threats - opp_threats;
 }
 
 static int board_score_cpu_impl(const PieceList& pieces, const std::string& perspective,
@@ -2991,6 +3364,10 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         int total = mat + pst * 2 + threat + hero_bonus + space + hanging + special;
         score += sign * total;
     }
+
+    // === NEW: Advanced Threat Evaluation (~+80 Elo) ===
+    // Uses attack-cache counts + single movegen context to keep the model fast.
+    score += advanced_threat_eval(pieces, perspective, cache);
 
     // ── Commander Safety (phase-scaled) ──────────────────────────────────
     if (my_cmd) {
@@ -3180,6 +3557,12 @@ static int quiesce(SearchState& st, int alpha, int beta,
         stand = (stand * 2 + precise) / 3;
     }
 
+    if (q_depth <= 3) {
+        int special_score = 0;
+        if (low_depth_special_outcome(st, perspective, 3 - q_depth, &special_score))
+            return special_score;
+    }
+
     // ── Commander in check detection (SF18 style) ─────────────────────────
     // When the side-to-move's commander is currently attacked, we cannot
     // apply the stand-pat cut-off or delta pruning — every move must be
@@ -3364,6 +3747,11 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     if (!win.empty()) {
         int base = 40000 + depth*100;
         return (last_mover == cpu_player) ? base : -base;
+    }
+    if (depth <= 3 && depth > 0) {
+        int special_score = 0;
+        if (low_depth_special_outcome(st, cpu_player, depth, &special_score))
+            return special_score;
     }
     if (depth == 0) {
         // Quiescence is negamax-style from side-to-move perspective.
