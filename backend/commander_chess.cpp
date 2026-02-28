@@ -78,18 +78,32 @@
 #include <memory>
 #include <mutex>
 #include <limits>
+#include <new>
 #include <random>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__unix__) || defined(__APPLE__)
-#include <sys/mman.h>
+#if defined(__EMSCRIPTEN__)
+#define COMMANDER_ENABLE_THREADS 0
+#else
+#define COMMANDER_ENABLE_THREADS 1
+#endif
+
+// WASM-SAFE: Browser builds run single-threaded by default.
+struct EngineNoopMutex {
+    void lock() noexcept {}
+    void unlock() noexcept {}
+};
+
+#if COMMANDER_ENABLE_THREADS
+using EngineMutex = std::mutex;
+#else
+using EngineMutex = EngineNoopMutex;
 #endif
 
 #if defined(__AVX2__)
@@ -210,14 +224,14 @@ struct AudioPlayback {
     size_t pos;
 };
 static std::vector<AudioPlayback> g_playbacks;
-static std::mutex g_audio_mutex;
+static EngineMutex g_audio_mutex;
 
 static void audio_callback(void* /*userdata*/, uint8_t* stream, int len) {
     int16_t* out = (int16_t*)stream;
     int n = len / 2;
     memset(stream, 0, len);
 
-    std::lock_guard<std::mutex> lk(g_audio_mutex);
+    std::lock_guard<EngineMutex> lk(g_audio_mutex);
     for (auto& pb : g_playbacks) {
         for (int i = 0; i < n && pb.pos < pb.buf->samples.size(); i++) {
             int32_t v = (int32_t)out[i] + pb.buf->samples[pb.pos++];
@@ -257,7 +271,7 @@ static void play_sound(const std::string& name) {
     if (!g_audio_ok) return;
     auto it = g_sounds.find(name);
     if (it == g_sounds.end()) return;
-    std::lock_guard<std::mutex> lk(g_audio_mutex);
+    std::lock_guard<EngineMutex> lk(g_audio_mutex);
     g_playbacks.push_back({&it->second, 0});
 }
 
@@ -365,7 +379,104 @@ struct Piece {
     int  carrier_id; // -1 when not carried; otherwise piece id of carrier
 };
 
-using PieceList = std::vector<Piece>;
+struct PieceList {
+    static constexpr std::size_t kMaxPieces = 132;
+    using value_type = Piece;
+    using size_type = std::size_t;
+    using iterator = Piece*;
+    using const_iterator = const Piece*;
+
+    std::array<Piece, kMaxPieces> items{};
+    size_type len = 0;
+
+    iterator begin() noexcept { return items.data(); }
+    iterator end() noexcept { return items.data() + len; }
+    const_iterator begin() const noexcept { return items.data(); }
+    const_iterator end() const noexcept { return items.data() + len; }
+    const_iterator cbegin() const noexcept { return items.data(); }
+    const_iterator cend() const noexcept { return items.data() + len; }
+
+    size_type size() const noexcept { return len; }
+    bool empty() const noexcept { return len == 0; }
+    void clear() noexcept { len = 0; }
+
+    void reserve(size_type n) {
+        if (n > kMaxPieces) throw std::length_error("PieceList reserve overflow");
+    }
+
+    value_type& operator[](size_type i) { return items[i]; }
+    const value_type& operator[](size_type i) const { return items[i]; }
+    value_type& front() { return items[0]; }
+    const value_type& front() const { return items[0]; }
+    value_type& back() { return items[len - 1]; }
+    const value_type& back() const { return items[len - 1]; }
+
+    value_type* data() noexcept { return items.data(); }
+    const value_type* data() const noexcept { return items.data(); }
+
+    void push_back(const value_type& v) {
+        if (len >= kMaxPieces) throw std::length_error("PieceList push_back overflow");
+        items[len++] = v;
+    }
+
+    void push_back(value_type&& v) {
+        if (len >= kMaxPieces) throw std::length_error("PieceList push_back overflow");
+        items[len++] = std::move(v);
+    }
+
+    template <typename... Args>
+    value_type& emplace_back(Args&&... args) {
+        if (len >= kMaxPieces) throw std::length_error("PieceList emplace_back overflow");
+        items[len] = value_type{std::forward<Args>(args)...};
+        return items[len++];
+    }
+
+    void pop_back() noexcept {
+        if (len > 0) --len;
+    }
+
+    iterator erase(iterator pos) {
+        size_type idx = static_cast<size_type>(pos - begin());
+        if (idx >= len) return end();
+        for (size_type i = idx; i + 1 < len; i++) items[i] = std::move(items[i + 1]);
+        --len;
+        return begin() + idx;
+    }
+
+    iterator erase(iterator first, iterator last) {
+        if (first == last) return first;
+        size_type idx_first = static_cast<size_type>(first - begin());
+        size_type idx_last = static_cast<size_type>(last - begin());
+        if (idx_first >= len) return end();
+        idx_last = std::min(idx_last, len);
+        size_type remove_count = idx_last - idx_first;
+        for (size_type i = idx_first; i + remove_count < len; i++) {
+            items[i] = std::move(items[i + remove_count]);
+        }
+        len -= remove_count;
+        return begin() + idx_first;
+    }
+
+    iterator insert(iterator pos, const value_type& v) {
+        size_type idx = static_cast<size_type>(pos - begin());
+        if (idx > len) idx = len;
+        if (len >= kMaxPieces) throw std::length_error("PieceList insert overflow");
+        for (size_type i = len; i > idx; i--) items[i] = std::move(items[i - 1]);
+        items[idx] = v;
+        ++len;
+        return begin() + idx;
+    }
+
+    iterator insert(iterator pos, value_type&& v) {
+        size_type idx = static_cast<size_type>(pos - begin());
+        if (idx > len) idx = len;
+        if (len >= kMaxPieces) throw std::length_error("PieceList insert overflow");
+        for (size_type i = len; i > idx; i--) items[i] = std::move(items[i - 1]);
+        items[idx] = std::move(v);
+        ++len;
+        return begin() + idx;
+    }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BOARD HELPERS
@@ -1530,6 +1641,12 @@ static inline bool valid_move_hint(const MoveTriple& m) {
     return m.pid >= 0 && on_board(m.dc, m.dr);
 }
 
+// === CHANGED === Commander Chess special-rule summary for canonical move application:
+// 1) Carrying/stacking: legal friendly stacking updates carrier_id links and syncs passengers.
+// 2) Heroic promotion: promote_heroes_from_checks runs after every legal move resolution.
+// 3) AF anti-air interception: non-hero AF entering enemy AA range is destroyed.
+// 4) AF bombardment return: AF can capture then return to source square if destination stays capturable.
+// 5) Navy/Tank stay-and-fire: navy/tank may capture without entering forbidden terrain.
 static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
     PieceList np = pieces;
     Piece* piece = piece_by_id(np, piece_id);
@@ -1616,7 +1733,6 @@ static AllMoves all_moves_for(const PieceList& pieces, const std::string& player
     return result;
 }
 
-
 // True if `player` can win immediately in one move from `pieces`.
 static bool has_immediate_winning_move(const PieceList& pieces, const std::string& player) {
     AllMoves moves = all_moves_for(pieces, player);
@@ -1681,19 +1797,15 @@ struct SearchState {
 };
 
 struct UndoMove {
-    bool used_snapshot = false;
+    // Always true in current implementation.
+    bool used_snapshot = true;
     PieceList snapshot_pieces;
+    Piece moved_piece{};
+    Piece captured_piece{};
+    bool had_capture = false;
     std::string turn_before;
     uint64_t hash_before = 0;
     int quick_eval_before = 0;
-    int moved_idx_before = -1;
-    int moved_idx_after = -1;
-    int moved_id = -1;
-    Piece moved_before{};
-    bool moved_removed = false;
-    bool had_capture = false;
-    int captured_idx_before = -1;
-    Piece captured_piece{};
 };
 
 static SearchState make_search_state(const PieceList& pieces, const std::string& turn,
@@ -1830,6 +1942,12 @@ static void build_attack_cache(SearchState& st) {
     st.atk.key = st.hash;
 }
 
+// === CHANGED ===
+// WASM-SAFE: avoid rebuilding attack cache unless state hash changed.
+static inline void ensure_attack_cache(SearchState& st) {
+    if (!st.atk.valid || st.atk.key != st.hash) build_attack_cache(st);
+}
+
 static bool make_move_inplace(SearchState& st, const MoveTriple& m,
                               const std::string& cpu_player, UndoMove& u);
 
@@ -1869,6 +1987,52 @@ static inline void tt_pack_move(TTEntry& e, const MoveTriple& m) {
 
 struct TTCluster { TTEntry e[TT_BUCKET]; };
 
+// === CHANGED ===
+struct EngineConfig {
+    bool use_mcts = false;
+    bool use_opening_book = true;
+    std::size_t tt_size_mb = 512;
+    int max_depth = 8;
+    int time_limit_ms = 3000;
+    int mcts_ab_depth = 3;
+    bool force_single_thread = false; // WASM-SAFE: true in browser builds.
+};
+
+static EngineConfig default_engine_config() {
+    EngineConfig cfg;
+#if defined(__EMSCRIPTEN__)
+    cfg.use_mcts = false;
+    cfg.use_opening_book = true;
+    cfg.tt_size_mb = 128;
+    cfg.max_depth = 8;
+    cfg.time_limit_ms = 3000;
+    cfg.mcts_ab_depth = 2;
+    cfg.force_single_thread = true;
+#endif
+    return cfg;
+}
+
+static EngineConfig g_engine_config = default_engine_config();
+static bool& g_use_mcts = g_engine_config.use_mcts;
+static bool& g_use_opening_book = g_engine_config.use_opening_book;
+
+static inline int engine_mcts_ab_depth() {
+    return std::max(1, g_engine_config.mcts_ab_depth);
+}
+
+static void set_engine_config(const EngineConfig& cfg) {
+    g_engine_config = cfg;
+    if (g_engine_config.tt_size_mb < 8) g_engine_config.tt_size_mb = 8;
+#if defined(__EMSCRIPTEN__)
+    g_engine_config.force_single_thread = true;
+    if (g_engine_config.tt_size_mb > 128) g_engine_config.tt_size_mb = 128;
+#endif
+}
+
+static const EngineConfig& get_engine_config() {
+    return g_engine_config;
+}
+
 // Contiguous TT arena with configurable size
 static size_t    g_tt_count = 0;      // number of clusters
 static size_t    g_tt_mask  = 0;      // count - 1 (power of 2)
@@ -1876,42 +2040,34 @@ static TTCluster* g_TT      = nullptr;
 static uint8_t   g_tt_age   = 0;
 static void*     g_tt_arena = nullptr;
 static size_t    g_tt_arena_bytes = 0;
+static constexpr std::align_val_t TT_ARENA_ALIGN = std::align_val_t(64);
 
 static void tt_arena_release() {
     if (!g_tt_arena) return;
-#if defined(_WIN32)
-    VirtualFree(g_tt_arena, 0, MEM_RELEASE);
-#elif defined(__unix__) || defined(__APPLE__)
-    munmap(g_tt_arena, g_tt_arena_bytes);
-#else
-    std::free(g_tt_arena);
-#endif
+    // WASM-SAFE: arena uses malloc + explicit alignment metadata.
+    void* raw = reinterpret_cast<void**>(g_tt_arena)[-1];
+    std::free(raw);
     g_tt_arena = nullptr;
     g_tt_arena_bytes = 0;
 }
 
 static void* tt_arena_alloc(size_t bytes) {
     if (bytes == 0) throw std::bad_alloc();
-#if defined(_WIN32)
-    void* p = VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    if (!p) throw std::bad_alloc();
-    return p;
-#elif defined(__unix__) || defined(__APPLE__)
-    void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (p == MAP_FAILED) throw std::bad_alloc();
-#if defined(MADV_RANDOM)
-    madvise(p, bytes, MADV_RANDOM);
-#endif
-#if defined(MADV_HUGEPAGE)
-    madvise(p, bytes, MADV_HUGEPAGE);
-#endif
-    return p;
-#else
-    // Last-resort fallback for unsupported platforms.
-    void* p = std::malloc(bytes);
-    if (!p) throw std::bad_alloc();
-    return p;
-#endif
+    const size_t align = static_cast<size_t>(TT_ARENA_ALIGN);
+    const size_t total = bytes + align + sizeof(void*);
+    void* raw = std::malloc(total);
+    if (!raw) throw std::bad_alloc();
+
+    void* aligned_base = static_cast<char*>(raw) + sizeof(void*);
+    size_t space = total - sizeof(void*);
+    void* aligned = std::align(align, bytes, aligned_base, space);
+    if (!aligned) {
+        std::free(raw);
+        throw std::bad_alloc();
+    }
+
+    reinterpret_cast<void**>(aligned)[-1] = raw;
+    return aligned;
 }
 
 static void tt_resize(size_t size_mb) {
@@ -1935,7 +2091,16 @@ static void tt_resize(size_t size_mb) {
 
 static void tt_ensure_allocated() {
     if (g_TT) return;
-    for (size_t mb : {2048, 1024, 512, 256, 128, 64, 32, 8}) {
+    const size_t preferred_mb = std::max<std::size_t>(8, get_engine_config().tt_size_mb);
+    if (preferred_mb > 0) {
+        try { tt_resize(preferred_mb); return; } catch (...) {}
+    }
+#if defined(__EMSCRIPTEN__)
+    for (size_t mb : {128, 96, 64, 48, 32, 16, 8}) {
+#else
+    for (size_t mb : {2048, 1024, 768, 512, 384, 256, 192, 128, 96, 64, 32, 8}) {
+#endif
+        if (mb == preferred_mb) continue;
         try { tt_resize(mb); return; } catch (...) {}
     }
 }
@@ -2039,6 +2204,23 @@ static SearchState make_search_state(const PieceList& pieces, const std::string&
     return st;
 }
 
+static void debug_validate_state_or_abort(const PieceList& pieces,
+                                          const std::string& last_mover,
+                                          const char* where) {
+#ifdef DEBUG
+    std::string reason;
+    if (!validate_state_for_sim(pieces, last_mover, &reason)) {
+        std::cerr << "[DEBUG] " << where << " produced invalid state: " << reason << "\n";
+        std::abort();
+    }
+#else
+    (void)pieces;
+    (void)last_mover;
+    (void)where;
+#endif
+}
+
+// === CHANGED ===
 static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
                                        const std::string& cpu_player, UndoMove& u) {
     u = UndoMove{};
@@ -2048,12 +2230,17 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
     if (st.pieces[moved_idx].player != st.turn) return false;
     if (!has_legal_destination(st.pieces[moved_idx], st.pieces, m.dc, m.dr)) return false;
 
-    u.used_snapshot = true;
     u.snapshot_pieces = st.pieces;
     u.turn_before = st.turn;
     u.hash_before = st.hash;
     u.quick_eval_before = st.quick_eval;
-    u.moved_id = m.pid;
+    u.moved_piece = st.pieces[moved_idx];
+
+    int captured_idx = find_piece_idx_at(st.pieces, m.dc, m.dr);
+    if (captured_idx >= 0 && st.pieces[captured_idx].player != st.turn) {
+        u.had_capture = true;
+        u.captured_piece = st.pieces[captured_idx];
+    }
 
     st.pieces = apply_move(st.pieces, m.pid, m.dc, m.dr, st.turn);
     st.turn = opp(st.turn);
@@ -2061,185 +2248,76 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
     st.quick_eval = quick_eval_cpu(st.pieces, cpu_player);
     st.atk.valid = false;
     st.rebuild_caches();
+    debug_validate_state_or_abort(st.pieces, u.turn_before, "make_move_inplace");
     return true;
 }
 
+/*
+ * make_move_inplace safety policy (WASM-SAFE):
+ *  1) Carrying / stacking transitions (including nested passenger sync)
+ *  2) Heroic promotions after decisive checks
+ *  3) AF anti-air interception on non-hero entry
+ *  4) AF bombardment return-to-origin when landing is unsafe
+ *  5) Navy/Tank stay-and-fire behavior on non-enterable sea squares
+ *
+ * These rules are all handled by apply_move(). We always snapshot and replay
+ * that canonical path to avoid incremental state-corruption bugs.
+ */
 static bool make_move_inplace(SearchState& st, const MoveTriple& m,
                               const std::string& cpu_player, UndoMove& u) {
-    u = UndoMove{};
-    if (!on_board(m.dc, m.dr)) return false;
-    int moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
-    if (moved_idx < 0) return false;
-    if (st.pieces[moved_idx].player != st.turn) return false;
+    return make_move_inplace_snapshot(st, m, cpu_player, u);
 
-    int target_idx_probe = find_piece_idx_at(st.pieces, m.dc, m.dr);
-    bool target_is_stackable_friendly = false;
-    bool target_has_stack = false;
-    if (target_idx_probe >= 0 && st.pieces[target_idx_probe].player == st.turn) {
-        target_is_stackable_friendly = can_stack_together(st.pieces, st.pieces[moved_idx], st.pieces[target_idx_probe]);
-    }
-    if (target_idx_probe >= 0) {
-        target_has_stack = piece_has_carried_children(st.pieces, st.pieces[target_idx_probe].id);
-    }
-    bool mover_is_carried = (st.pieces[moved_idx].carrier_id >= 0);
-    bool mover_is_carrier = piece_has_carried_children(st.pieces, st.pieces[moved_idx].id);
-
-    // Snapshot mode only when this move touches stack state.
-    if (target_is_stackable_friendly || mover_is_carried || mover_is_carrier || target_has_stack) {
-        return make_move_inplace_snapshot(st, m, cpu_player, u);
-    }
-
-    u.turn_before = st.turn;
-    u.hash_before = st.hash;
-    u.quick_eval_before = st.quick_eval;
-    u.moved_id = m.pid;
-
-    u.moved_idx_before = moved_idx;
-    u.moved_before = st.pieces[moved_idx];
-
-    auto remove_piece = [&](int idx) {
-        const Piece oldp = st.pieces[idx];
-        st.quick_eval -= quick_piece_score_cpu(oldp, cpu_player);
-        st.hash ^= zobrist_piece_key(oldp);
-        st.pieces.erase(st.pieces.begin() + idx);
-    };
-    auto update_piece = [&](int idx, const Piece& np) {
-        const Piece oldp = st.pieces[idx];
-        st.quick_eval -= quick_piece_score_cpu(oldp, cpu_player);
-        st.hash ^= zobrist_piece_key(oldp);
-        st.pieces[idx] = np;
-        st.quick_eval += quick_piece_score_cpu(st.pieces[idx], cpu_player);
-        st.hash ^= zobrist_piece_key(st.pieces[idx]);
-    };
-    auto apply_hero_promotions = [&]() {
-        PieceList promoted = st.pieces;
-        promote_heroes_from_checks(promoted);
-        for (const auto& p2 : promoted) {
-            if (!p2.hero) continue;
-            int idx = find_piece_idx_by_id(st.pieces, p2.id);
-            if (idx < 0 || st.pieces[idx].hero) continue;
-            Piece np = st.pieces[idx];
-            np.hero = true;
-            update_piece(idx, np);
-        }
-    };
-
-    st.hash ^= g_ZobristTurn[st.turn=="red" ? 0 : 1];
-
-    int target_idx = find_piece_idx_at(st.pieces, m.dc, m.dr);
-    bool navy_stays = false;
-    if (target_idx >= 0) {
-        const Piece& target = st.pieces[target_idx];
-        if (target.player == st.turn) {
-            st.hash = u.hash_before;
-            st.quick_eval = u.quick_eval_before;
-            return false;
-        }
-        navy_stays = (st.pieces[moved_idx].kind=="N" && !is_navigable(m.dc,m.dr))
-                   || (st.pieces[moved_idx].kind=="T" && is_sea(m.dc,m.dr));
-        u.had_capture = true;
-        u.captured_idx_before = target_idx;
-        u.captured_piece = target;
-        remove_piece(target_idx);
-        if (target_idx < moved_idx) moved_idx--;
-    }
-
-    moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
-    if (moved_idx < 0) {
-        st.hash = u.hash_before;
-        st.quick_eval = u.quick_eval_before;
-        return false;
-    }
-
-    if (u.had_capture && st.pieces[moved_idx].kind=="Af" && !st.pieces[moved_idx].hero) {
-        if (in_aa_range(st.pieces, m.dc, m.dr, st.turn)) {
-            u.moved_removed = true;
-            u.moved_idx_after = moved_idx;
-            remove_piece(moved_idx);
-            apply_hero_promotions();
-            st.turn = opp(st.turn);
-            st.hash ^= g_ZobristTurn[st.turn=="red" ? 0 : 1];
-            st.atk.valid = false;
-            st.rebuild_caches();
-#ifdef DEBUG
-            if (!validate_state(st.pieces)) { std::abort(); }
+#if 0
+    // Future optimization:
+    // Re-introduce an incremental in-place move path once it is formally
+    // proven equivalent to snapshot replay for all special Commander rules.
 #endif
-            return true;
-        }
-    }
-
-    if (!navy_stays) {
-        Piece np = st.pieces[moved_idx];
-        np.col = m.dc;
-        np.row = m.dr;
-        update_piece(moved_idx, np);
-    }
-
-    moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
-    if (u.had_capture && moved_idx >= 0 &&
-        st.pieces[moved_idx].kind == "Af" &&
-        u.captured_piece.kind != "N" &&
-        u.captured_piece.kind != "Af" && !navy_stays) {
-        // Bombardment rule: unsafe AF land captures can return to origin.
-        if (square_capturable_by_player(st.pieces, m.dc, m.dr, opp(st.turn))) {
-            Piece np = st.pieces[moved_idx];
-            np.col = u.moved_before.col;
-            np.row = u.moved_before.row;
-            update_piece(moved_idx, np);
-        }
-    }
-
-    apply_hero_promotions();
-
-    u.moved_idx_after = find_piece_idx_by_id(st.pieces, m.pid);
-    st.turn = opp(st.turn);
-    st.hash ^= g_ZobristTurn[st.turn=="red" ? 0 : 1];
-    st.atk.valid = false;
-    st.rebuild_caches();
-#ifdef DEBUG
-    if (!validate_state(st.pieces)) { std::abort(); }
-#endif
-    return true;
 }
 
+/*
+ * unmake_move_inplace safety policy (perfect inverse of make):
+ *  1) Carrying / stacking links are restored exactly from snapshot.
+ *  2) Heroic promotions are reversed by snapshot restore.
+ *  3) AF anti-air interception outcomes are restored exactly.
+ *  4) AF bombardment return-to-origin outcomes are restored exactly.
+ *  5) Navy/Tank stay-and-fire outcomes are restored exactly.
+ *
+ * Full snapshot restore (pieces + turn + hash + eval) guarantees no drift.
+ */
 static void unmake_move_inplace(SearchState& st, const UndoMove& u) {
-    if (u.used_snapshot) {
-        st.turn = u.turn_before;
-        st.hash = u.hash_before;
-        st.quick_eval = u.quick_eval_before;
-        st.pieces = u.snapshot_pieces;
-        st.atk.valid = false;
-        st.rebuild_caches();
-#ifdef DEBUG
-        if (!validate_state(st.pieces)) { std::abort(); }
-#endif
-        return;
-    }
-
     st.turn = u.turn_before;
     st.hash = u.hash_before;
     st.quick_eval = u.quick_eval_before;
-
-    if (u.moved_removed) {
-        int idx = std::max(0, std::min((int)st.pieces.size(), u.moved_idx_after));
-        st.pieces.insert(st.pieces.begin()+idx, u.moved_before);
-    } else {
-        int moved_idx = find_piece_idx_by_id(st.pieces, u.moved_id);
-        if (moved_idx >= 0) st.pieces[moved_idx] = u.moved_before;
-        else {
-            int idx = std::max(0, std::min((int)st.pieces.size(), u.moved_idx_before));
-            st.pieces.insert(st.pieces.begin()+idx, u.moved_before);
-        }
-    }
-    if (u.had_capture) {
-        int idx = std::max(0, std::min((int)st.pieces.size(), u.captured_idx_before));
-        st.pieces.insert(st.pieces.begin()+idx, u.captured_piece);
-    }
+    st.pieces = u.snapshot_pieces;
     st.atk.valid = false;
     st.rebuild_caches();
-#ifdef DEBUG
-    if (!validate_state(st.pieces)) { std::abort(); }
-#endif
+    debug_validate_state_or_abort(st.pieces, opp(st.turn), "unmake_move_inplace");
+}
+
+// === CHANGED ===
+// Move-generator regression helper.
+static uint64_t perft_impl(SearchState& st, int depth, const std::string& cpu_player) {
+    if (depth <= 0) return 1ULL;
+    AllMoves moves = all_moves_for(st.pieces, st.turn);
+    if (depth == 1) return (uint64_t)moves.size();
+    uint64_t nodes = 0;
+    for (const auto& m : moves) {
+        UndoMove u;
+        if (!make_move_inplace(st, m, cpu_player, u)) continue;
+        nodes += perft_impl(st, depth - 1, cpu_player);
+        unmake_move_inplace(st, u);
+    }
+    return nodes;
+}
+
+static uint64_t perft(const PieceList& pieces, const std::string& turn, int depth) {
+    SearchState st = make_search_state(pieces, turn, turn);
+    return perft_impl(st, depth, turn);
+}
+
+static uint64_t perft(int depth) {
+    PieceList init = make_initial_pieces();
+    return perft(init, "red", depth);
 }
 
 // ── Killer moves & History ─────────────────────────────────────────────────
@@ -2670,7 +2748,7 @@ static int commander_attackers_cached(SearchState& st, const std::string& player
     int pi = (player == "red") ? 0 : 1;
     int cc = st.cmd_col[pi], cr = st.cmd_row[pi];
     if (cc < 0) return 0;
-    build_attack_cache(st);
+    ensure_attack_cache(st);
     return attackers_to_square(st.pieces, cc, cr, opp(player), &st.atk);
 }
 
@@ -3069,7 +3147,7 @@ static int quiesce(SearchState& st, int alpha, int beta,
     g_nodes.fetch_add(1, std::memory_order_relaxed);
     int stand = (perspective == cpu_player) ? st.quick_eval : -st.quick_eval;
     if (q_depth == 0) {
-        build_attack_cache(st);
+        ensure_attack_cache(st);
         int precise = board_score(st.pieces, perspective, &st.atk, &perspective);
         stand = (stand * 2 + precise) / 3;
     }
@@ -3085,7 +3163,7 @@ static int quiesce(SearchState& st, int alpha, int beta,
             if (p.player == perspective && p.kind == "C") { my_cmd = &p; break; }
         }
         if (my_cmd) {
-            build_attack_cache(st);
+            ensure_attack_cache(st);
             int pl_atk = (perspective == "red") ? 1 : 0;
             in_check = (st.atk.counts[pl_atk][my_cmd->row][my_cmd->col] > 0);
         }
@@ -3183,7 +3261,8 @@ static thread_local bool g_time_up_cache = false;
 
 static bool time_up() {
     if (g_time_up_cache) return true;
-    if (++g_time_check_counter & 255) return false;  // check every 256 nodes
+    // WASM-SAFE: throttle wall-clock reads to once per 4096 node checks.
+    if (((++g_time_check_counter) & 4095ULL) != 0) return false;
     bool up = std::chrono::steady_clock::now() > g_deadline ||
               (g_stop_flag && g_stop_flag->load(std::memory_order_relaxed));
     if (up) g_time_up_cache = true;
@@ -3422,7 +3501,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     int pre_my_navy = st.navy_count[(cpu_player == "red") ? 0 : 1];
     AllMoves moves = all_moves_for(st.pieces, st.turn);
     if (moves.empty()) {
-        build_attack_cache(st);
+        ensure_attack_cache(st);
         return board_score(st.pieces, cpu_player, &st.atk, &st.turn);
     }
 
@@ -3729,7 +3808,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     }
 
     if (move_index == 0) {
-        build_attack_cache(st);
+        ensure_attack_cache(st);
         return board_score(st.pieces, cpu_player, &st.atk, &st.turn);
     }
 
@@ -3754,14 +3833,13 @@ struct AIResult { bool found; MoveTriple move; };
 // Architecture:
 //   • Root:  Monte-Carlo Tree Search with PUCT selection guided by a
 //            heuristic "policy head" (captures/mobility/positional priors).
-//   • Leaf:  Alpha-beta at MCTS_AB_DEPTH plies — acts as the "value head".
+//   • Leaf:  Alpha-beta at engine_mcts_ab_depth() plies — acts as the "value head".
 //   • This eliminates the horizon effect that pure AB suffers at the root:
 //     promising moves receive exponentially more AB evaluations, naturally
 //     extending the effective search horizon.
 // ────────────────────────────────────────────────────────────────────────────
 
 static constexpr float MCTS_CPUCT    = 1.8f;  // exploration constant
-static constexpr int   MCTS_AB_DEPTH = 3;     // AB plies per leaf evaluation (was 5; 3 gives ~2× more sims)
 static constexpr float MCTS_VIRTUAL_LOSS = 0.35f;
 static constexpr int   MCTS_MAX_THREADS = 8;
 static constexpr int   MCTS_EVAL_BATCH_CPU = 16;
@@ -3959,7 +4037,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     int root_visits = 1;
-    std::mutex tree_mutex;
+    EngineMutex tree_mutex;
     const std::string opp_player = opp(cpu_player);
 
     auto evaluate_leaf_value = [&](SelectionPath& sel, int* out_val) -> bool {
@@ -3973,7 +4051,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     auto apply_leaf_result = [&](const SelectionPath& sel, float leaf_val) -> bool {
-        std::lock_guard<std::mutex> lk(tree_mutex);
+        std::lock_guard<EngineMutex> lk(tree_mutex);
         if (sel.l1_idx < 0 || sel.l1_idx >= (int)children.size()) return false;
         MCTSLevel1Child& l1 = children[sel.l1_idx];
         if (l1.virtual_loss > 0) l1.virtual_loss--;
@@ -3993,7 +4071,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     auto rollback_virtual_loss = [&](const SelectionPath& sel) {
-        std::lock_guard<std::mutex> lk(tree_mutex);
+        std::lock_guard<EngineMutex> lk(tree_mutex);
         if (sel.l1_idx < 0 || sel.l1_idx >= (int)children.size()) return;
         MCTSLevel1Child& l1 = children[sel.l1_idx];
         if (l1.virtual_loss > 0) l1.virtual_loss--;
@@ -4004,7 +4082,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     auto select_path = [&](SelectionPath& sel) -> bool {
-        std::lock_guard<std::mutex> lk(tree_mutex);
+        std::lock_guard<EngineMutex> lk(tree_mutex);
         if (children.empty()) return false;
 
         float sqrt_root = std::sqrt((float)std::max(1, root_visits));
@@ -4105,7 +4183,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
             req_idx.reserve(selected.size());
             for (size_t i = 0; i < selected.size(); i++) {
                 if (!ok[i]) continue;
-                build_attack_cache(selected[i].eval_st);
+                ensure_attack_cache(selected[i].eval_st);
                 reqs.push_back(EvalBatchRequest{
                     &selected[i].eval_st.pieces,
                     &cpu_player,
@@ -4143,18 +4221,27 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
         }
     };
 
-    int hw_threads = (int)std::thread::hardware_concurrency();
-    if (hw_threads <= 0) hw_threads = 1;
-    int num_workers = std::max(1, std::min(hw_threads, MCTS_MAX_THREADS));
+    int num_workers = 1;
+#if COMMANDER_ENABLE_THREADS
+    if (!get_engine_config().force_single_thread) {
+        int hw_threads = (int)std::thread::hardware_concurrency();
+        if (hw_threads <= 0) hw_threads = 1;
+        num_workers = std::max(1, std::min(hw_threads, MCTS_MAX_THREADS));
+    }
+#endif
     if (time_limit_secs <= 0.10 || (int)children.size() <= 2) num_workers = 1;
 
     if (num_workers == 1) {
         worker(0);
     } else {
+#if COMMANDER_ENABLE_THREADS
         std::vector<std::thread> threads;
         threads.reserve(num_workers);
         for (int i = 0; i < num_workers; i++) threads.emplace_back(worker, i);
         for (auto& t : threads) if (t.joinable()) t.join();
+#else
+        worker(0);
+#endif
     }
 
     int best_idx = 0;
@@ -4173,8 +4260,6 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     if (best_visits <= 0) return {false, {}};
     return {true, children[best_idx].move};
 }
-
-static bool g_use_mcts = false;   // enabled at Hard difficulty
 
 static bool is_legal_book_move(const SearchState& st, const std::string& cpu_player, const MoveTriple& cand) {
     int idx = find_piece_idx_by_id(st.pieces, cand.pid);
@@ -4277,12 +4362,16 @@ static bool opening_book_pick(const SearchState& st, const std::string& cpu_play
     return false;
 }
 
-static bool g_use_opening_book = true;
-
 static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_player,
                                int max_depth, double time_limit_secs,
                                const std::atomic<bool>* stop_flag = nullptr,
                                ThreadData* td = nullptr) {
+    const EngineConfig& cfg = get_engine_config();
+    if (max_depth <= 0) max_depth = std::max(1, cfg.max_depth);
+    if (time_limit_secs <= 0.0) {
+        time_limit_secs = std::max(0.01, cfg.time_limit_ms / 1000.0);
+    }
+
     struct StopFlagScope {
         const std::atomic<bool>* prev = nullptr;
         explicit StopFlagScope(const std::atomic<bool>* flag) : prev(g_stop_flag) { g_stop_flag = flag; }
@@ -4457,9 +4546,10 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
 static int g_smp_thread_count = 0; // 0 = auto-detect
 
 static int smp_thread_count() {
-#if defined(__EMSCRIPTEN__)
+#if !COMMANDER_ENABLE_THREADS
     return 1;
 #else
+    if (get_engine_config().force_single_thread) return 1;
     if (g_smp_thread_count > 0) return g_smp_thread_count;
     int hw = (int)std::thread::hardware_concurrency();
     if (hw <= 0) hw = 1;
@@ -4471,7 +4561,7 @@ static int smp_thread_count() {
 struct SMPShared {
     std::atomic<bool>   stop{false};
     std::atomic<int>    best_score{-999999};
-    std::mutex          best_mutex;
+    EngineMutex         best_mutex;
     MoveTriple          best_move{};
     bool                best_found{false};
     std::chrono::steady_clock::time_point deadline;       // hard limit
@@ -4644,7 +4734,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
         if (completed) {
             int global_best = shared.best_score.load(std::memory_order_relaxed);
             if (cur_best_val > global_best || !shared.best_found) {
-                std::lock_guard<std::mutex> lk(shared.best_mutex);
+                std::lock_guard<EngineMutex> lk(shared.best_mutex);
                 if (cur_best_val > shared.best_score.load(std::memory_order_relaxed) ||
                     !shared.best_found) {
                     shared.best_score.store(cur_best_val, std::memory_order_relaxed);
@@ -4668,7 +4758,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                     // complex: extend the soft deadline by 25% (capped at hard).
                     // This mirrors Stockfish 18's "bestMoveChanges" time manager.
                     if (cur_depth >= 4) {
-                        std::lock_guard<std::mutex> lk(shared.best_mutex);
+                        std::lock_guard<EngineMutex> lk(shared.best_mutex);
                         auto now = std::chrono::steady_clock::now();
                         auto remaining = shared.deadline - now;
                         auto extension = remaining / 4;  // 25% of remaining time
@@ -4716,6 +4806,7 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
 
     int num_threads = smp_thread_count();
     if (num_threads < 1) num_threads = 1;
+    if (get_engine_config().force_single_thread) num_threads = 1; // WASM-SAFE
 
     // ── Dynamic Time Management ──────────────────────────────────────────
     // soft_limit: ideal time (stop if stable), hard_limit: absolute max
@@ -4740,6 +4831,7 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
     if (num_threads <= 1) {
         run_worker(0);
     } else {
+#if COMMANDER_ENABLE_THREADS
         std::vector<std::thread> threads;
         threads.reserve(num_threads);
         for (int i = 0; i < num_threads; i++) {
@@ -4748,6 +4840,9 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
         for (auto& t : threads) {
             if (t.joinable()) t.join();
         }
+#else
+        run_worker(0);
+#endif
     }
 
     if (shared.best_found)
@@ -4852,9 +4947,12 @@ struct Game {
     std::string last_move_player = "red";
     int review_index = -1; // -1 = live board, else index into state_history
 
-    // CPU async
+    // === CHANGED ===
+    // CPU async (WASM-SAFE: synchronous fallback when threads are disabled).
+#if COMMANDER_ENABLE_THREADS
     std::thread cpu_thread;
-    std::mutex cpu_mutex;
+#endif
+    EngineMutex cpu_mutex;
     std::atomic<bool> cpu_stop{false};
     bool cpu_done = false;
     AIResult cpu_result;
@@ -4876,15 +4974,35 @@ struct Game {
 
     void stop_cpu() {
         cpu_stop.store(true, std::memory_order_relaxed);
+#if COMMANDER_ENABLE_THREADS
         if (cpu_thread.joinable()) cpu_thread.join();
+#endif
         cpu_stop.store(false, std::memory_order_relaxed);
     }
 
     void set_difficulty(int d) {
         difficulty = d;
-        if (d==0) { cpu_depth=4; cpu_time_limit=2.5;  g_use_mcts=false; }
-        else if (d==1) { cpu_depth=6; cpu_time_limit=3.0;  g_use_mcts=false; }
-        else { cpu_depth=8; cpu_time_limit=8.0; g_use_mcts=true; }
+        EngineConfig cfg = get_engine_config();
+        if (d==0) {
+            cpu_depth=4; cpu_time_limit=2.5;
+            cfg.use_mcts=false;
+            cfg.max_depth=cpu_depth;
+            cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
+        } else if (d==1) {
+            cpu_depth=6; cpu_time_limit=3.0;
+            cfg.use_mcts=false;
+            cfg.max_depth=cpu_depth;
+            cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
+        } else {
+            cpu_depth=8; cpu_time_limit=8.0;
+            cfg.use_mcts=true;
+            cfg.max_depth=cpu_depth;
+            cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
+        }
+#if !COMMANDER_ENABLE_THREADS
+        cfg.force_single_thread = true;
+#endif
+        set_engine_config(cfg);
     }
 
     void set_game_mode(GameMode mode) {
@@ -5219,7 +5337,7 @@ struct Game {
     void start_cpu_move() {
         stop_cpu();
         {
-            std::lock_guard<std::mutex> lk(cpu_mutex);
+            std::lock_guard<EngineMutex> lk(cpu_mutex);
             cpu_done = false;
         }
         PieceList pieces_copy = pieces;
@@ -5227,7 +5345,7 @@ struct Game {
         int depth = cpu_depth;
         double tlimit = cpu_time_limit;
 
-        cpu_thread = std::thread([this, pieces_copy, cpu_pl, depth, tlimit]() {
+        auto run_cpu_search = [this, pieces_copy, cpu_pl, depth, tlimit]() {
             try {
                 reset_search_tables();
                 g_game_rep_history = position_history;  // let search see game repetition history
@@ -5241,7 +5359,7 @@ struct Game {
                         MoveTriple book_mv{};
                         if (g_use_opening_book && opening_book_pick(root_st, cpu_pl, book_mv)) {
                             if (!cpu_stop.load(std::memory_order_relaxed)) {
-                                std::lock_guard<std::mutex> lk(cpu_mutex);
+                                std::lock_guard<EngineMutex> lk(cpu_mutex);
                                 cpu_result = {true, book_mv};
                                 cpu_done   = true;
                             }
@@ -5253,7 +5371,7 @@ struct Game {
                     double mcts_time = tlimit * 0.70;
                     double verify_time = tlimit * 0.28;
                     res = mcts_ab_root_search(pieces_copy, cpu_pl,
-                                             MCTS_AB_DEPTH, mcts_time, &cpu_stop);
+                                              engine_mcts_ab_depth(), mcts_time, &cpu_stop);
                     // If MCTS found a move, run quick SMP verification
                     if (res.found && !cpu_stop.load(std::memory_order_relaxed)) {
                         // Hint: put MCTS best move into TT so SMP searches it first
@@ -5267,21 +5385,28 @@ struct Game {
                     res = smp_cpu_pick_move(pieces_copy, cpu_pl, depth, tlimit, &cpu_stop);
                 }
                 if (cpu_stop.load(std::memory_order_relaxed)) return;
-                std::lock_guard<std::mutex> lk(cpu_mutex);
+                std::lock_guard<EngineMutex> lk(cpu_mutex);
                 if (cpu_stop.load(std::memory_order_relaxed)) return;
                 cpu_result = res;
                 cpu_done = true;
             } catch (...) {
-                std::lock_guard<std::mutex> lk(cpu_mutex);
+                std::lock_guard<EngineMutex> lk(cpu_mutex);
                 cpu_result = {false, {}};
                 cpu_done = true;
             }
-        });
+        };
+
+#if COMMANDER_ENABLE_THREADS
+        cpu_thread = std::thread(run_cpu_search);
+#else
+        // WASM-SAFE: no detached worker threads in browser runtime.
+        run_cpu_search();
+#endif
     }
 
     void check_cpu_done() {
         if (state != GameState::CPU_THINKING) return;
-        std::lock_guard<std::mutex> lk(cpu_mutex);
+        std::lock_guard<EngineMutex> lk(cpu_mutex);
         if (!cpu_done) return;
         cpu_done = false;
 

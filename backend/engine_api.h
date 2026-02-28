@@ -19,6 +19,7 @@ const char* cc_get_position();
 // Compute best move without mutating game state.
 // Returns JSON object string like {"pid":1,"dc":2,"dr":3}.
 const char* cc_get_best_move(int time_ms, int depth);
+const char* cc_cpu_pick_move(int time_ms, int depth);
 
 // Apply move from JSON string ("pid/dc/dr"). Returns 1 on success.
 int cc_apply_move(const char* move_uci_or_custom);

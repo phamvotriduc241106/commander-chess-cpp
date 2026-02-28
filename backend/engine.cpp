@@ -1,6 +1,7 @@
 #include "engine.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <mutex>
 
@@ -18,15 +19,23 @@ static std::once_flag g_engine_init_once;
 static void ensure_engine_init() {
     std::call_once(g_engine_init_once, []() {
         init_zobrist();
-        // Cloud Run instances can be memory-limited; force a compact TT.
-        // The original allocator probes very large sizes first (2GB, 1GB, ...),
-        // which can OOM-kill the container before fallback completes.
-        for (size_t mb : {64ULL, 32ULL, 16ULL, 8ULL}) {
+        // WASM-SAFE: configure runtime defaults before TT allocation.
+        EngineConfig cfg = get_engine_config();
+#if defined(__EMSCRIPTEN__)
+        cfg.force_single_thread = true;
+        cfg.tt_size_mb = 128;
+        cfg.mcts_ab_depth = 2;
+#endif
+        set_engine_config(cfg);
+
+        // Try configured size first, then compact fallbacks for constrained hosts.
+        const size_t preferred_mb = std::max<size_t>(8, get_engine_config().tt_size_mb);
+        const std::array<size_t, 5> tt_try_mb = {preferred_mb, (size_t)64, (size_t)32, (size_t)16, (size_t)8};
+        for (size_t mb : tt_try_mb) {
             try {
                 tt_resize(mb);
                 break;
-            } catch (...) {
-            }
+            } catch (...) {}
         }
         if (!g_TT) tt_ensure_allocated();
         reset_search_tables();
@@ -81,26 +90,36 @@ static void apply_mode_to_core(const std::string& game_mode) {
 
 static void apply_difficulty_to_core(const std::string& difficulty) {
     const std::string d = normalize_difficulty(difficulty);
+    EngineConfig cfg = get_engine_config();
+    cfg.use_mcts = (d == "hard");
 #if defined(__EMSCRIPTEN__)
-    // Keep browser builds single-threaded and deterministic.
-    g_use_mcts = false;
-#else
-    g_use_mcts = (d == "hard");
+    // WASM-SAFE: keep browser builds single-threaded and deterministic by default.
+    cfg.use_mcts = false;
+    cfg.force_single_thread = true;
 #endif
+    set_engine_config(cfg);
 }
 
 static void apply_difficulty_to_state(GameState& state) {
     state.difficulty = normalize_difficulty(state.difficulty);
+    EngineConfig cfg = get_engine_config();
     if (state.difficulty == "easy") {
         state.bot_depth = 4;
         state.bot_time_limit = 2.5;
+        cfg.max_depth = 4;
+        cfg.time_limit_ms = 2500;
     } else if (state.difficulty == "hard") {
         state.bot_depth = 8;
         state.bot_time_limit = 8.0;
+        cfg.max_depth = 8;
+        cfg.time_limit_ms = 8000;
     } else {
         state.bot_depth = 6;
         state.bot_time_limit = 3.0;
+        cfg.max_depth = 6;
+        cfg.time_limit_ms = 3000;
     }
+    set_engine_config(cfg);
     apply_difficulty_to_core(state.difficulty);
 }
 

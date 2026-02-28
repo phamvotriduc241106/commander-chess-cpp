@@ -21,7 +21,19 @@ using json = nlohmann::json;
 
 namespace {
 
-std::mutex g_api_mu;
+// === CHANGED ===
+// WASM-SAFE: no-op mutex in single-threaded browser runtime.
+struct ApiNoopMutex {
+    void lock() noexcept {}
+    void unlock() noexcept {}
+};
+#if defined(__EMSCRIPTEN__)
+using ApiMutex = ApiNoopMutex;
+#else
+using ApiMutex = std::mutex;
+#endif
+
+ApiMutex g_api_mu;
 commander::GameState g_state;
 bool g_initialized = false;
 std::string g_last_error;
@@ -229,14 +241,14 @@ void ensure_initialized_locked() {
 extern "C" {
 
 CC_KEEPALIVE int cc_init() {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
     ensure_initialized_locked();
     return 1;
 }
 
 CC_KEEPALIVE int cc_new_game(const char* game_mode, const char* difficulty, const char* human_player) {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
 
     std::string mode = game_mode ? game_mode : "full";
@@ -272,7 +284,7 @@ CC_KEEPALIVE int cc_new_game(const char* game_mode, const char* difficulty, cons
 }
 
 CC_KEEPALIVE int cc_set_position(const char* state_json_or_fen) {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
 
     if (!state_json_or_fen) {
@@ -298,14 +310,14 @@ CC_KEEPALIVE int cc_set_position(const char* state_json_or_fen) {
 }
 
 CC_KEEPALIVE const char* cc_get_position() {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
     ensure_initialized_locked();
     return current_state_json_locked();
 }
 
 CC_KEEPALIVE const char* cc_get_best_move(int time_ms, int depth) {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
     ensure_initialized_locked();
 
@@ -330,8 +342,13 @@ CC_KEEPALIVE const char* cc_get_best_move(int time_ms, int depth) {
     return set_out_json(move_to_json(m));
 }
 
+// WASM-SAFE: explicit cpu_pick_move export alias for JS callers.
+CC_KEEPALIVE const char* cc_cpu_pick_move(int time_ms, int depth) {
+    return cc_get_best_move(time_ms, depth);
+}
+
 CC_KEEPALIVE int cc_apply_move(const char* move_uci_or_custom) {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
     ensure_initialized_locked();
 
@@ -351,7 +368,7 @@ CC_KEEPALIVE int cc_apply_move(const char* move_uci_or_custom) {
 }
 
 CC_KEEPALIVE const char* cc_get_sprites_json() {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     clear_error();
 
     json sprites = json::object();
@@ -362,7 +379,7 @@ CC_KEEPALIVE const char* cc_get_sprites_json() {
 }
 
 CC_KEEPALIVE const char* cc_get_last_error() {
-    std::lock_guard<std::mutex> lk(g_api_mu);
+    std::lock_guard<ApiMutex> lk(g_api_mu);
     return set_out_string(g_last_error);
 }
 
