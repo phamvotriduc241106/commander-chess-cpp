@@ -9,10 +9,14 @@
   <meta property="og:title" content="Commander Chess" />
   <meta property="og:description" content="Play Commander Chess in your browser with local CPU or local multiplayer modes." />
   <meta property="og:url" content="https://commander-chess-cpp-1771534802.web.app/" />
+  <meta name="theme-color" content="#1a2a1f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.9689b8ed8626.css" />
+  <link rel="stylesheet" href="/style.6d4e7e1c91c1.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -212,6 +216,13 @@
 
           <div class="board-frame">
             <div id="board" class="board" role="grid" aria-rowcount="12" aria-colcount="11" aria-label="Commander chess board"></div>
+            <div id="quickTutorialOverlay" class="quick-tutorial-overlay" hidden>
+              <p>First battle? Learn the basics in 60 seconds.</p>
+              <div class="quick-tutorial-actions">
+                <button id="quickTutorialStartBtn" class="btn primary" type="button">START QUICK TUTORIAL</button>
+                <button id="quickTutorialSkipBtn" class="btn ghost" type="button">SKIP</button>
+              </div>
+            </div>
           </div>
 
           <div id="xCoords" class="coord-x" aria-hidden="true"></div>
@@ -284,6 +295,7 @@
             <span id="moveHintsLabel">Highlight Legal Moves</span>
             <input id="moveHintsToggle" type="checkbox" checked />
           </label>
+          <button id="pwaInstallBtn" class="btn ghost pwa-install-btn" type="button" hidden>ADD TO HOME SCREEN</button>
         </section>
 
         <section class="card">
@@ -356,6 +368,25 @@
     </div>
   </section>
 
-  <script src="/app.91c720cab1de.js"></script>
+  <section id="postGameModal" class="postgame-modal" role="dialog" aria-modal="true" aria-labelledby="postGameTitle" aria-describedby="postGameResult" aria-hidden="true">
+    <div id="postGameCard" class="postgame-card" tabindex="-1">
+      <p class="kicker">Battle Report</p>
+      <h3 id="postGameTitle">Victory</h3>
+      <p id="postGameResult" class="postgame-result">Battle complete.</p>
+      <div class="postgame-flare" aria-hidden="true"></div>
+      <div class="postgame-stats-block">
+        <h4>Units Destroyed By Type</h4>
+        <div id="postGameStats" class="postgame-stats"></div>
+      </div>
+      <p id="postGameShareStatus" class="postgame-share-status" aria-live="polite"></p>
+      <div class="postgame-actions">
+        <button id="postGameRematchBtn" class="btn primary" type="button">REMATCH SAME SETTINGS</button>
+        <button id="postGameShareBtn" class="btn ghost" type="button">COPY REPLAY LINK</button>
+        <button id="postGameCloseBtn" class="btn ghost" type="button">CLOSE</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="/app.e252d4a9c36d.js"></script>
 </body>
 </html>

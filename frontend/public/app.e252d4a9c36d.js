@@ -638,6 +638,8 @@ const PIECE_GLYPH = Object.freeze({
 });
 
 const TUTORIAL_STORAGE_KEY = 'tutorialCompleted';
+const QUICK_TUTORIAL_STORAGE_KEY = 'quickTutorialPromptSeen';
+const REPLAY_MAX_MOVES = 2048;
 
 const TUTORIAL_STEPS = Object.freeze([
   {
@@ -904,6 +906,9 @@ const authUserLabelEl = document.getElementById('authUserLabel');
 const signInBtn = document.getElementById('signInBtn');
 const signOutBtn = document.getElementById('signOutBtn');
 const tutorialBtn = document.getElementById('tutorialBtn');
+const quickTutorialOverlayEl = document.getElementById('quickTutorialOverlay');
+const quickTutorialStartBtn = document.getElementById('quickTutorialStartBtn');
+const quickTutorialSkipBtn = document.getElementById('quickTutorialSkipBtn');
 const tutorialModalEl = document.getElementById('tutorialModal');
 const tutorialCardEl = tutorialModalEl ? tutorialModalEl.querySelector('.tutorial-card') : null;
 const tutorialKickerEl = document.getElementById('tutorialKicker');
@@ -916,6 +921,16 @@ const tutorialPrevBtn = document.getElementById('tutorialPrevBtn');
 const tutorialReplayBtn = document.getElementById('tutorialReplayBtn');
 const tutorialStartBtn = document.getElementById('tutorialStartBtn');
 const tutorialNextBtn = document.getElementById('tutorialNextBtn');
+const postGameModalEl = document.getElementById('postGameModal');
+const postGameCardEl = document.getElementById('postGameCard');
+const postGameTitleEl = document.getElementById('postGameTitle');
+const postGameResultEl = document.getElementById('postGameResult');
+const postGameStatsEl = document.getElementById('postGameStats');
+const postGameShareStatusEl = document.getElementById('postGameShareStatus');
+const postGameRematchBtn = document.getElementById('postGameRematchBtn');
+const postGameShareBtn = document.getElementById('postGameShareBtn');
+const postGameCloseBtn = document.getElementById('postGameCloseBtn');
+const pwaInstallBtn = document.getElementById('pwaInstallBtn');
 
 let gameId = null;
 let state = null;
@@ -981,6 +996,9 @@ let tutorialAllowedMoves = [];
 let tutorialActive = false;
 let tutorialDrag = null;
 let tutorialFocusCell = null;
+let postGameShownSignature = '';
+let deferredInstallPrompt = null;
+let replayLoading = false;
 
 let audioCtx = null;
 let audioMaster = null;
@@ -2337,6 +2355,37 @@ function setTutorialCompleted(done = true) {
   }
 }
 
+function quickTutorialPromptSeen() {
+  try {
+    return window.localStorage.getItem(QUICK_TUTORIAL_STORAGE_KEY) === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function setQuickTutorialPromptSeen(done = true) {
+  try {
+    window.localStorage.setItem(QUICK_TUTORIAL_STORAGE_KEY, done ? 'true' : 'false');
+  } catch (_) {
+    // ignore storage failures
+  }
+}
+
+function shouldShowQuickTutorialOverlay() {
+  if (!quickTutorialOverlayEl) return false;
+  if (!hasStartedGame || !state || state.game_over) return false;
+  if (isOnlineMultiplayer()) return false;
+  if (tutorialActive) return false;
+  if (tutorialIsCompleted()) return false;
+  if (quickTutorialPromptSeen()) return false;
+  return true;
+}
+
+function updateQuickTutorialOverlay() {
+  if (!quickTutorialOverlayEl) return;
+  quickTutorialOverlayEl.hidden = !shouldShowQuickTutorialOverlay();
+}
+
 function resetTutorialState() {
   tutorialStep = 0;
   tutorialPieces = TUTORIAL_INITIAL_PIECES.map((piece) => ({ ...piece }));
@@ -2552,10 +2601,12 @@ function prevTutorial() {
 function closeTutorial(markComplete = false) {
   if (!tutorialModalEl) return;
   if (markComplete) setTutorialCompleted(true);
+  if (markComplete || tutorialIsCompleted()) setQuickTutorialPromptSeen(true);
   clearTutorialDragState();
   tutorialActive = false;
   tutorialModalEl.classList.remove('show');
   tutorialModalEl.setAttribute('aria-hidden', 'true');
+  updateQuickTutorialOverlay();
 }
 
 function openTutorial({ replay = false, auto = false } = {}) {
@@ -2564,10 +2615,12 @@ function openTutorial({ replay = false, auto = false } = {}) {
   if (replay) resetTutorialState();
 
   tutorialActive = true;
+  setQuickTutorialPromptSeen(true);
   tutorialModalEl.classList.add('show');
   tutorialModalEl.setAttribute('aria-hidden', 'false');
   renderTutorialStep();
   if (tutorialCardEl) tutorialCardEl.focus();
+  updateQuickTutorialOverlay();
 }
 
 function tutorialCellFromPoint(x, y) {
@@ -2867,6 +2920,8 @@ function updateStatus() {
     setStatusTheme();
     updateBotButtonState();
     announceStatusLive();
+    updateQuickTutorialOverlay();
+    closePostGameModal();
     return;
   }
 
@@ -2942,6 +2997,268 @@ function updateStatus() {
   setStatusTheme();
   updateBotButtonState();
   announceStatusLive();
+  updateQuickTutorialOverlay();
+  maybeShowPostGameModal();
+}
+
+function otherSide(side) {
+  return side === 'red' ? 'blue' : 'red';
+}
+
+function winnerFromResultText(resultText) {
+  const text = String(resultText || '').toLowerCase();
+  if (text.includes('red wins') || text.includes('đỏ thắng')) return 'red';
+  if (text.includes('blue wins') || text.includes('xanh thắng')) return 'blue';
+  return '';
+}
+
+function pieceStatsLabel(kind) {
+  return pieceName(kind) || pieceGlyph(kind);
+}
+
+function computeDestroyedByAttacker() {
+  const totals = { red: Object.create(null), blue: Object.create(null) };
+  if (!Array.isArray(stateHistory) || stateHistory.length < 2) return totals;
+
+  for (let i = 1; i < stateHistory.length; i++) {
+    const prev = stateHistory[i - 1];
+    const next = stateHistory[i];
+    if (!prev || !next || !next.last_move_player) continue;
+    const attacker = next.last_move_player;
+    if (attacker !== 'red' && attacker !== 'blue') continue;
+    const nextIds = new Set(next.pieces.map((p) => p.id));
+    for (const p of prev.pieces) {
+      if (nextIds.has(p.id)) continue;
+      if (p.kind === 'H') continue;
+      if (p.player === attacker) continue;
+      totals[attacker][p.kind] = (totals[attacker][p.kind] || 0) + 1;
+    }
+  }
+
+  return totals;
+}
+
+function formatDestroyedKindsLine(kindsMap) {
+  const entries = Object.entries(kindsMap || {}).sort((a, b) => {
+    const va = Number(a[1]) || 0;
+    const vb = Number(b[1]) || 0;
+    if (vb !== va) return vb - va;
+    return a[0].localeCompare(b[0]);
+  });
+  if (!entries.length) return selectedLanguage === 'vi' ? 'Không có' : 'None';
+  return entries.map(([kind, count]) => `${pieceStatsLabel(kind)} x${count}`).join('  ·  ');
+}
+
+function clearPostGameShareStatus() {
+  if (!postGameShareStatusEl) return;
+  postGameShareStatusEl.textContent = '';
+  postGameShareStatusEl.classList.remove('ok');
+}
+
+function setPostGameShareStatus(message, ok = false) {
+  if (!postGameShareStatusEl) return;
+  postGameShareStatusEl.textContent = String(message || '');
+  postGameShareStatusEl.classList.toggle('ok', !!ok);
+}
+
+function closePostGameModal() {
+  if (!postGameModalEl) return;
+  postGameModalEl.classList.remove('show');
+  postGameModalEl.setAttribute('aria-hidden', 'true');
+  clearPostGameShareStatus();
+}
+
+function showPostGameModal() {
+  if (!postGameModalEl || !postGameCardEl || !state || !state.game_over) return;
+
+  const winner = winnerFromResultText(state.result);
+  const you = humanSide();
+  let title = selectedLanguage === 'vi' ? 'Trận đấu kết thúc' : 'Battle Complete';
+  let tone = 'draw';
+  if (winner) {
+    if (!isLocalMultiplayer() && winner === you) {
+      title = selectedLanguage === 'vi' ? 'Chiến thắng' : 'Victory';
+      tone = 'victory';
+    } else if (!isLocalMultiplayer() && winner !== you) {
+      title = selectedLanguage === 'vi' ? 'Thất bại' : 'Defeat';
+      tone = 'defeat';
+    } else {
+      title = `${sideCaps(winner)} ${selectedLanguage === 'vi' ? 'chiến thắng' : 'Wins'}`;
+      tone = winner === 'red' ? 'victory' : 'defeat';
+    }
+  } else {
+    title = selectedLanguage === 'vi' ? 'Hòa' : 'Draw';
+  }
+
+  if (postGameTitleEl) postGameTitleEl.textContent = title;
+  if (postGameResultEl) postGameResultEl.textContent = state.result || (selectedLanguage === 'vi' ? 'Trận đấu đã kết thúc.' : 'Game over.');
+  postGameCardEl.classList.remove('victory', 'defeat', 'draw');
+  postGameCardEl.classList.add(tone);
+
+  const totals = computeDestroyedByAttacker();
+  if (postGameStatsEl) {
+    const redLine = formatDestroyedKindsLine(totals.red);
+    const blueLine = formatDestroyedKindsLine(totals.blue);
+    postGameStatsEl.innerHTML =
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${sideCaps('red')}</div><div class="postgame-stats-line">${redLine}</div></div>` +
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${sideCaps('blue')}</div><div class="postgame-stats-line">${blueLine}</div></div>`;
+  }
+
+  clearPostGameShareStatus();
+  postGameModalEl.classList.add('show');
+  postGameModalEl.setAttribute('aria-hidden', 'false');
+  postGameCardEl.focus();
+}
+
+function maybeShowPostGameModal() {
+  if (!state || !state.game_over || !postGameModalEl) {
+    closePostGameModal();
+    return;
+  }
+  const signature = `${stateHash(state)}:${moveHistory.length}`;
+  if (postGameShownSignature === signature) return;
+  postGameShownSignature = signature;
+  showPostGameModal();
+}
+
+function encodeReplayPayload(payload) {
+  const json = JSON.stringify(payload);
+  const enc = new TextEncoder().encode(json);
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < enc.length; i += CHUNK) {
+    binary += String.fromCharCode(...enc.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+function decodeReplayPayload(token) {
+  const clean = String(token || '').trim();
+  if (!clean) return null;
+  const binary = atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const json = new TextDecoder().decode(bytes);
+  const parsed = JSON.parse(json);
+  return parsed && typeof parsed === 'object' ? parsed : null;
+}
+
+function buildReplayPayload() {
+  const moves = moveHistory
+    .map((entry) => {
+      if (!entry || !entry.to) return null;
+      return {
+        pid: Number(entry.pid),
+        dc: Number(entry.to.c),
+        dr: Number(entry.to.r)
+      };
+    })
+    .filter((m) => Number.isFinite(m.pid) && Number.isFinite(m.dc) && Number.isFinite(m.dr))
+    .slice(0, REPLAY_MAX_MOVES);
+
+  return {
+    v: 1,
+    mode: activeMode(),
+    difficulty: activeDifficulty(),
+    side: selectedSide,
+    playerMode: selectedPlayerMode,
+    moves
+  };
+}
+
+function buildReplayLink() {
+  const payload = buildReplayPayload();
+  const token = encodeReplayPayload(payload);
+  const url = new URL(window.location.href);
+  url.searchParams.delete('match');
+  url.searchParams.delete('replay');
+  url.hash = `replay=${encodeURIComponent(token)}`;
+  return url.toString();
+}
+
+function replayTokenFromUrl() {
+  const url = new URL(window.location.href);
+  const queryToken = url.searchParams.get('replay');
+  if (queryToken) return queryToken;
+  if (url.hash && url.hash.startsWith('#replay=')) {
+    return decodeURIComponent(url.hash.slice('#replay='.length));
+  }
+  return '';
+}
+
+async function loadReplayFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') throw new Error('Invalid replay payload.');
+  const mode = isValidMode(payload.mode) ? payload.mode : 'full';
+  const difficulty = isValidDifficulty(payload.difficulty) ? payload.difficulty : 'medium';
+  const side = payload.side === 'blue' ? 'blue' : 'red';
+  const rawMoves = Array.isArray(payload.moves) ? payload.moves : [];
+
+  await newGame(mode, side, difficulty, 'local');
+  const api = await ensureGameApi();
+
+  let currentState = state;
+  const nextStateHistory = [cloneState(currentState)];
+  const nextMoveHistory = [];
+
+  for (const mvRaw of rawMoves.slice(0, REPLAY_MAX_MOVES)) {
+    const move = normalizeMove(mvRaw);
+    if (!move || !moveIsLegal(move, currentState)) break;
+    const prev = cloneState(currentState);
+    const data = await api.move({ game_id: gameId, move });
+    currentState = data.state;
+    const fromSquare = findLastMoveFrom(prev, currentState);
+    nextMoveHistory.push({
+      player: currentState.last_move_player,
+      from: fromSquare || null,
+      to: { c: currentState.last_move.dc, r: currentState.last_move.dr },
+      capture: !!currentState.last_move_capture,
+      pid: currentState.last_move.pid
+    });
+    nextStateHistory.push(cloneState(currentState));
+    if (currentState.game_over) break;
+  }
+
+  state = currentState;
+  moveHistory = nextMoveHistory;
+  stateHistory = nextStateHistory;
+  selectedPid = null;
+  reviewIndex = stateHistory.length > 1 ? stateHistory.length - 1 : -1;
+  lastMoveFrom = moveHistory.length > 0 ? moveHistory[moveHistory.length - 1].from || null : null;
+  hasStartedGame = true;
+  postGameShownSignature = '';
+  clearBoardFx();
+  closeSetupMenu();
+  updateSetupSelectionUI();
+  updateQuickRestartVisibility();
+  updateHistoryUI();
+  updateStatus();
+  drawBoard();
+}
+
+async function tryLoadReplayFromUrl() {
+  const token = replayTokenFromUrl();
+  if (!token || replayLoading) return false;
+  replayLoading = true;
+  try {
+    const payload = decodeReplayPayload(token);
+    if (!payload) return false;
+    await loadReplayFromPayload(payload);
+    return true;
+  } catch (err) {
+    console.warn('[Commander Chess] replay load failed', err);
+    return false;
+  } finally {
+    replayLoading = false;
+  }
+}
+
+function updatePwaInstallButton() {
+  if (!pwaInstallBtn) return;
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || !!window.navigator.standalone;
+  const canPrompt = !!deferredInstallPrompt && !standalone;
+  pwaInstallBtn.hidden = !canPrompt;
+  pwaInstallBtn.disabled = !canPrompt;
 }
 
 function showError(error, retryAction = null) {
@@ -3750,6 +4067,18 @@ function applyLocalizedStaticText() {
   if (tutorialReplayBtn) tutorialReplayBtn.textContent = 'REPLAY';
   if (tutorialStartBtn) tutorialStartBtn.textContent = 'START TUTORIAL';
   if (tutorialNextBtn) tutorialNextBtn.textContent = 'NEXT';
+  if (quickTutorialOverlayEl) {
+    const msgEl = quickTutorialOverlayEl.querySelector('p');
+    if (msgEl) msgEl.textContent = selectedLanguage === 'vi'
+      ? 'Ván đầu tiên? Học nhanh luật trong 60 giây.'
+      : 'First battle? Learn the basics in 60 seconds.';
+  }
+  if (quickTutorialStartBtn) quickTutorialStartBtn.textContent = selectedLanguage === 'vi' ? 'BẮT ĐẦU HƯỚNG DẪN NHANH' : 'START QUICK TUTORIAL';
+  if (quickTutorialSkipBtn) quickTutorialSkipBtn.textContent = selectedLanguage === 'vi' ? 'BỎ QUA' : 'SKIP';
+  if (pwaInstallBtn) pwaInstallBtn.textContent = selectedLanguage === 'vi' ? 'THÊM VÀO MÀN HÌNH CHÍNH' : 'ADD TO HOME SCREEN';
+  if (postGameRematchBtn) postGameRematchBtn.textContent = selectedLanguage === 'vi' ? 'CHƠI LẠI (GIỮ CÀI ĐẶT)' : 'REMATCH SAME SETTINGS';
+  if (postGameShareBtn) postGameShareBtn.textContent = selectedLanguage === 'vi' ? 'SAO CHÉP LIÊN KẾT PHÁT LẠI' : 'COPY REPLAY LINK';
+  if (postGameCloseBtn) postGameCloseBtn.textContent = selectedLanguage === 'vi' ? 'ĐÓNG' : 'CLOSE';
   updateStartModeButton();
   updateQuickRestartVisibility();
   if (botBtn) botBtn.textContent = t('forceBotMove');
@@ -3955,6 +4284,8 @@ function closeSetupMenu() {
 async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMode) {
   clearAutoBotTimer();
   clearBoardFx();
+  closePostGameModal();
+  postGameShownSignature = '';
   botThinking = false;
   guestMovePending = false;
   selectedPid = null;
@@ -4374,6 +4705,21 @@ if (tutorialBtn) {
   });
 }
 
+if (quickTutorialStartBtn) {
+  quickTutorialStartBtn.addEventListener('click', () => {
+    setQuickTutorialPromptSeen(true);
+    updateQuickTutorialOverlay();
+    openTutorial({ replay: true, auto: false });
+  });
+}
+
+if (quickTutorialSkipBtn) {
+  quickTutorialSkipBtn.addEventListener('click', () => {
+    setQuickTutorialPromptSeen(true);
+    updateQuickTutorialOverlay();
+  });
+}
+
 if (skipTutorialBtn) {
   skipTutorialBtn.addEventListener('click', () => {
     closeTutorial(true);
@@ -4409,6 +4755,55 @@ if (tutorialReplayBtn) {
 if (tutorialModalEl) {
   tutorialModalEl.addEventListener('click', (ev) => {
     if (ev.target === tutorialModalEl) closeTutorial(true);
+  });
+}
+
+if (postGameRematchBtn) {
+  postGameRematchBtn.addEventListener('click', () => {
+    const launchConfig = currentLaunchConfig();
+    closePostGameModal();
+    clearRetryAction();
+    runStartGame(launchConfig).catch((err) => showError(err, () => runStartGame(launchConfig)));
+  });
+}
+
+if (postGameShareBtn) {
+  postGameShareBtn.addEventListener('click', async () => {
+    const replayLink = buildReplayLink();
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(replayLink);
+      } else {
+        const area = document.createElement('textarea');
+        area.value = replayLink;
+        area.style.position = 'fixed';
+        area.style.left = '-1000px';
+        area.style.top = '-1000px';
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(area);
+        if (!ok) throw new Error('copy-failed');
+      }
+      setPostGameShareStatus(selectedLanguage === 'vi' ? 'Đã sao chép liên kết phát lại.' : 'Replay link copied.', true);
+    } catch (_) {
+      setPostGameShareStatus(selectedLanguage === 'vi'
+        ? 'Không thể sao chép tự động. Hãy sao chép thủ công từ thanh địa chỉ.'
+        : 'Auto-copy failed. Please copy the URL manually.');
+    }
+  });
+}
+
+if (postGameCloseBtn) {
+  postGameCloseBtn.addEventListener('click', () => {
+    closePostGameModal();
+  });
+}
+
+if (postGameModalEl) {
+  postGameModalEl.addEventListener('click', (ev) => {
+    if (ev.target === postGameModalEl) closePostGameModal();
   });
 }
 
@@ -4562,7 +4957,7 @@ applyLocalizedStaticText();
 updateSetupSelectionUI();
 updateQuickRestartVisibility();
 openSetupMenu();
-maybeAutoOpenTutorial();
+updatePwaInstallButton();
 updateHistoryUI();
 updateStatus();
 initializeAuth().catch((err) => {
@@ -4579,8 +4974,13 @@ window.addEventListener('pointerdown', unlockAudio, { once: true });
 window.addEventListener('keydown', unlockAudio, { once: true });
 window.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
-  if (!tutorialActive) return;
-  closeTutorial(true);
+  if (tutorialActive) {
+    closeTutorial(true);
+    return;
+  }
+  if (postGameModalEl && postGameModalEl.classList.contains('show')) {
+    closePostGameModal();
+  }
 });
 window.addEventListener('resize', () => {
   if (window.innerWidth > 768 && setupRulesMenuOpen) {
@@ -4592,6 +4992,44 @@ window.addEventListener('beforeunload', () => {
   closeOnlineRtc();
   clearTutorialDragState();
   if (authUnsub) authUnsub();
+});
+
+window.addEventListener('beforeinstallprompt', (ev) => {
+  ev.preventDefault();
+  deferredInstallPrompt = ev;
+  updatePwaInstallButton();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  updatePwaInstallButton();
+});
+
+if (pwaInstallBtn) {
+  pwaInstallBtn.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    try {
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+    } catch (_) {
+      // user dismissed
+    } finally {
+      deferredInstallPrompt = null;
+      updatePwaInstallButton();
+    }
+  });
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('[Commander Chess] service worker registration failed', err);
+    });
+  });
+}
+
+tryLoadReplayFromUrl().catch((err) => {
+  console.warn('[Commander Chess] replay boot load failed', err);
 });
 
 loadSprites().then(() => drawBoard());
