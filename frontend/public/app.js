@@ -20,6 +20,10 @@ const I18N = {
     setupKicker: 'Mode Setup',
     setupTitle: 'Welcome to Commander Chess',
     setupSub: 'Quick Start runs beginner onboarding. Create Match opens full setup.',
+    setupPresetQuickTitle: 'Quick Start (Beginner)',
+    setupPresetQuickDesc: 'Single · Full Battle · Beginner · Rulebook intro + tutorial · Auto start',
+    setupPresetCreateTitle: 'Create Match',
+    setupPresetCreateDesc: 'Open full match setup window (mode, side, difficulty, online).',
     setupRulesOpen: 'RULES',
     setupRulesClose: 'CLOSE RULES',
     setupAboutOpen: 'About',
@@ -108,6 +112,21 @@ const I18N = {
     rulesDocClose: 'CLOSE',
     rulesDocHint: 'Preview is shown as HTML for browser compatibility. Download DOCX below.',
     rulesDocLink: 'DOWNLOAD DOCX',
+    quickTutorialStartBtn: 'START QUICK TUTORIAL',
+    quickTutorialSkipBtn: 'SKIP',
+    quickTutorialOverlayMsg: 'First battle? Learn the basics in 60 seconds.',
+    pwaInstallBtnLabel: 'ADD TO HOME SCREEN',
+    postGameRematchBtn: 'REMATCH SAME SETTINGS',
+    postGameShareBtn: 'COPY REPLAY LINK',
+    postGameCloseBtn: 'CLOSE',
+    postGameShareCopied: 'Replay link copied.',
+    postGameShareCopyFail: 'Auto-copy failed. Please copy the URL manually.',
+    postGameTitleBattleComplete: 'Battle Complete',
+    postGameTitleVictory: 'Victory',
+    postGameTitleDefeat: 'Defeat',
+    postGameTitleWins: '{side} Wins',
+    postGameTitleDraw: 'Draw',
+    postGameResultFallback: 'Game over.',
     mainKicker: 'Tactical Command Interface',
     newGameMenu: 'NEW GAME / MENU',
     quickRestart: 'NEW GAME (SAME SETTINGS)',
@@ -294,6 +313,10 @@ const I18N = {
     setupKicker: 'Thiết lập trận',
     setupTitle: 'Chào mừng đến với Commander Chess',
     setupSub: 'Vào nhanh sẽ chạy luật + hướng dẫn. Tạo trận sẽ mở thiết lập đầy đủ.',
+    setupPresetQuickTitle: 'Vào Nhanh (Người Mới)',
+    setupPresetQuickDesc: '1 người · Full Battle · Beginner · Xem luật + hướng dẫn · Tự động bắt đầu',
+    setupPresetCreateTitle: 'Tạo Trận',
+    setupPresetCreateDesc: 'Mở cửa sổ thiết lập trận (chế độ, phe, độ khó, online).',
     setupRulesOpen: 'LUẬT',
     setupRulesClose: 'ĐÓNG LUẬT',
     setupAboutOpen: 'Giới thiệu',
@@ -382,6 +405,21 @@ const I18N = {
     rulesDocClose: 'ĐÓNG',
     rulesDocHint: 'Bản xem trong ứng dụng dùng HTML để tương thích trình duyệt. Bạn có thể tải DOCX bên dưới.',
     rulesDocLink: 'TẢI DOCX',
+    quickTutorialStartBtn: 'BẮT ĐẦU HƯỚNG DẪN NHANH',
+    quickTutorialSkipBtn: 'BỎ QUA',
+    quickTutorialOverlayMsg: 'Ván đầu tiên? Học nhanh luật trong 60 giây.',
+    pwaInstallBtnLabel: 'THÊM VÀO MÀN HÌNH CHÍNH',
+    postGameRematchBtn: 'CHƠI LẠI (GIỮ CÀI ĐẶT)',
+    postGameShareBtn: 'SAO CHÉP LIÊN KẾT PHÁT LẠI',
+    postGameCloseBtn: 'ĐÓNG',
+    postGameShareCopied: 'Đã sao chép liên kết phát lại.',
+    postGameShareCopyFail: 'Không thể sao chép tự động. Hãy sao chép thủ công từ thanh địa chỉ.',
+    postGameTitleBattleComplete: 'Trận đấu kết thúc',
+    postGameTitleVictory: 'Chiến thắng',
+    postGameTitleDefeat: 'Thất bại',
+    postGameTitleWins: '{side} chiến thắng',
+    postGameTitleDraw: 'Hòa',
+    postGameResultFallback: 'Trận đấu đã kết thúc.',
     mainKicker: 'Giao diện chỉ huy chiến thuật',
     newGameMenu: 'VÁN MỚI / MENU',
     quickRestart: 'VÁN MỚI (GIỮ THIẾT LẬP)',
@@ -561,6 +599,18 @@ const I18N = {
     }
   }
 };
+
+const I18N_AUTO = (typeof window !== 'undefined' && window.__I18N_AUTO && typeof window.__I18N_AUTO === 'object')
+  ? window.__I18N_AUTO
+  : null;
+
+if (I18N_AUTO) {
+  Object.entries(I18N_AUTO).forEach(([lang, dict]) => {
+    if (dict && typeof dict === 'object') {
+      I18N[lang] = dict;
+    }
+  });
+}
 
 const AUDIO_SAMPLE_RATE = 22050;
 const SOUND_LIBRARY = {
@@ -3112,7 +3162,7 @@ function formatDestroyedKindsLine(kindsMap) {
     if (vb !== va) return vb - va;
     return a[0].localeCompare(b[0]);
   });
-  if (!entries.length) return selectedLanguage === 'vi' ? 'Không có' : 'None';
+  if (!entries.length) return t('noSelection');
   return entries.map(([kind, count]) => `${pieceStatsLabel(kind)} x${count}`).join('  ·  ');
 }
 
@@ -3140,25 +3190,25 @@ function showPostGameModal() {
 
   const winner = winnerFromResultText(state.result);
   const you = humanSide();
-  let title = selectedLanguage === 'vi' ? 'Trận đấu kết thúc' : 'Battle Complete';
+  let title = t('postGameTitleBattleComplete');
   let tone = 'draw';
   if (winner) {
     if (!isLocalMultiplayer() && winner === you) {
-      title = selectedLanguage === 'vi' ? 'Chiến thắng' : 'Victory';
+      title = t('postGameTitleVictory');
       tone = 'victory';
     } else if (!isLocalMultiplayer() && winner !== you) {
-      title = selectedLanguage === 'vi' ? 'Thất bại' : 'Defeat';
+      title = t('postGameTitleDefeat');
       tone = 'defeat';
     } else {
-      title = `${sideCaps(winner)} ${selectedLanguage === 'vi' ? 'chiến thắng' : 'Wins'}`;
+      title = t('postGameTitleWins', { side: sideCaps(winner) });
       tone = winner === 'red' ? 'victory' : 'defeat';
     }
   } else {
-    title = selectedLanguage === 'vi' ? 'Hòa' : 'Draw';
+    title = t('postGameTitleDraw');
   }
 
   if (postGameTitleEl) postGameTitleEl.textContent = title;
-  if (postGameResultEl) postGameResultEl.textContent = state.result || (selectedLanguage === 'vi' ? 'Trận đấu đã kết thúc.' : 'Game over.');
+  if (postGameResultEl) postGameResultEl.textContent = state.result || t('postGameResultFallback');
   postGameCardEl.classList.remove('victory', 'defeat', 'draw');
   postGameCardEl.classList.add(tone);
 
@@ -4197,26 +4247,14 @@ function applyLocalizedStaticText() {
   if (presetQuickStartBtn) {
     const quickStrong = presetQuickStartBtn.querySelector('strong');
     const quickSpan = presetQuickStartBtn.querySelector('span');
-    if (quickStrong) quickStrong.textContent = selectedLanguage === 'vi' ? 'Vào Nhanh (Người Mới)' : 'Quick Start (Beginner)';
-    if (quickSpan) quickSpan.textContent = selectedLanguage === 'vi'
-      ? '1 người · Full Battle · Beginner · Xem luật + hướng dẫn · Tự động bắt đầu'
-      : 'Single · Full Battle · Beginner · Rulebook intro + tutorial · Auto start';
+    if (quickStrong) quickStrong.textContent = t('setupPresetQuickTitle');
+    if (quickSpan) quickSpan.textContent = t('setupPresetQuickDesc');
   }
   if (presetClassicBtn) {
     const classicStrong = presetClassicBtn.querySelector('strong');
     const classicSpan = presetClassicBtn.querySelector('span');
-    if (classicStrong) classicStrong.textContent = selectedLanguage === 'vi' ? 'Tạo Trận' : 'Create Match';
-    if (classicSpan) classicSpan.textContent = selectedLanguage === 'vi'
-      ? 'Mở cửa sổ thiết lập trận (chế độ, phe, độ khó, online).'
-      : 'Open full match setup window (mode, side, difficulty, online).';
-  }
-  if (presetCustomBtn) {
-    const customStrong = presetCustomBtn.querySelector('strong');
-    const customSpan = presetCustomBtn.querySelector('span');
-    if (customStrong) customStrong.textContent = selectedLanguage === 'vi' ? '⚙️ Tùy Chỉnh Chi Tiết' : '⚙️ Custom Setup';
-    if (customSpan) customSpan.textContent = selectedLanguage === 'vi'
-      ? 'Hiện / ẩn các tùy chọn chi tiết'
-      : 'Show / hide detailed options';
+    if (classicStrong) classicStrong.textContent = t('setupPresetCreateTitle');
+    if (classicSpan) classicSpan.textContent = t('setupPresetCreateDesc');
   }
   updateSetupRulesToggleLabel();
   if (languageLabelEl) languageLabelEl.textContent = t('languageLabel');
@@ -4295,16 +4333,14 @@ function applyLocalizedStaticText() {
   if (tutorialNextBtn) tutorialNextBtn.textContent = 'NEXT';
   if (quickTutorialOverlayEl) {
     const msgEl = quickTutorialOverlayEl.querySelector('p');
-    if (msgEl) msgEl.textContent = selectedLanguage === 'vi'
-      ? 'Ván đầu tiên? Học nhanh luật trong 60 giây.'
-      : 'First battle? Learn the basics in 60 seconds.';
+    if (msgEl) msgEl.textContent = t('quickTutorialOverlayMsg');
   }
-  if (quickTutorialStartBtn) quickTutorialStartBtn.textContent = selectedLanguage === 'vi' ? 'BẮT ĐẦU HƯỚNG DẪN NHANH' : 'START QUICK TUTORIAL';
-  if (quickTutorialSkipBtn) quickTutorialSkipBtn.textContent = selectedLanguage === 'vi' ? 'BỎ QUA' : 'SKIP';
-  if (pwaInstallBtn) pwaInstallBtn.textContent = selectedLanguage === 'vi' ? 'THÊM VÀO MÀN HÌNH CHÍNH' : 'ADD TO HOME SCREEN';
-  if (postGameRematchBtn) postGameRematchBtn.textContent = selectedLanguage === 'vi' ? 'CHƠI LẠI (GIỮ CÀI ĐẶT)' : 'REMATCH SAME SETTINGS';
-  if (postGameShareBtn) postGameShareBtn.textContent = selectedLanguage === 'vi' ? 'SAO CHÉP LIÊN KẾT PHÁT LẠI' : 'COPY REPLAY LINK';
-  if (postGameCloseBtn) postGameCloseBtn.textContent = selectedLanguage === 'vi' ? 'ĐÓNG' : 'CLOSE';
+  if (quickTutorialStartBtn) quickTutorialStartBtn.textContent = t('quickTutorialStartBtn');
+  if (quickTutorialSkipBtn) quickTutorialSkipBtn.textContent = t('quickTutorialSkipBtn');
+  if (pwaInstallBtn) pwaInstallBtn.textContent = t('pwaInstallBtnLabel');
+  if (postGameRematchBtn) postGameRematchBtn.textContent = t('postGameRematchBtn');
+  if (postGameShareBtn) postGameShareBtn.textContent = t('postGameShareBtn');
+  if (postGameCloseBtn) postGameCloseBtn.textContent = t('postGameCloseBtn');
   updateStartModeButton();
   updateQuickRestartVisibility();
   if (botBtn) botBtn.textContent = t('forceBotMove');
@@ -5057,11 +5093,9 @@ if (postGameShareBtn) {
         document.body.removeChild(area);
         if (!ok) throw new Error('copy-failed');
       }
-      setPostGameShareStatus(selectedLanguage === 'vi' ? 'Đã sao chép liên kết phát lại.' : 'Replay link copied.', true);
+      setPostGameShareStatus(t('postGameShareCopied'), true);
     } catch (_) {
-      setPostGameShareStatus(selectedLanguage === 'vi'
-        ? 'Không thể sao chép tự động. Hãy sao chép thủ công từ thanh địa chỉ.'
-        : 'Auto-copy failed. Please copy the URL manually.');
+      setPostGameShareStatus(t('postGameShareCopyFail'));
     }
   });
 }
