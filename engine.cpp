@@ -189,8 +189,6 @@ static std::map<std::string,std::string> PIECE_B64 = {
     {"H_red", "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"},
     {"H_blue", "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"},
 };
-
-
 // ═══════════════════════════════════════════════════════════════════════════
 // SOUND ENGINE — synthesized WAV playback via SDL2 audio
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1659,12 +1657,13 @@ static inline bool valid_move_hint(const MoveTriple& m) {
 // 3) AF anti-air interception: non-hero AF entering enemy AA range is destroyed.
 // 4) AF bombardment return: AF can capture then return to source square if destination stays capturable.
 // 5) Navy/Tank stay-and-fire: navy/tank may capture without entering forbidden terrain.
-static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+
+// Internal implementation shared by both checked and unchecked apply_move variants.
+static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
     PieceList np = pieces;
     Piece* piece = piece_by_id(np, piece_id);
     if (!piece || piece->player != player) return np;
     if (!on_board(dc, dr)) return np;
-    if (!has_legal_destination(*piece, np, dc, dr)) return np;
 
     int src_col = piece->col;
     int src_row = piece->row;
@@ -1730,6 +1729,21 @@ static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int d
     sync_carried_positions(np, piece->id);
     promote_heroes_from_checks(np);
     return np;
+}
+
+// Checked version: verifies legality before applying. Used by GUI and opening book.
+static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+    const Piece* piece = piece_by_id_c(pieces, piece_id);
+    if (!piece || piece->player != player) return pieces;
+    if (!on_board(dc, dr)) return pieces;
+    if (!has_legal_destination(*piece, pieces, dc, dr)) return pieces;
+    return apply_move_impl(pieces, piece_id, dc, dr, player);
+}
+
+// Unchecked version: skips redundant legality check. Used by search when legality
+// was already verified by the caller (saves a full move generation per search node).
+static PieceList apply_move_unchecked(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+    return apply_move_impl(pieces, piece_id, dc, dr, player);
 }
 
 using AllMoves = std::vector<MoveTriple>;
@@ -2269,7 +2283,7 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
         u.captured_piece = st.pieces[captured_idx];
     }
 
-    st.pieces = apply_move(st.pieces, m.pid, m.dc, m.dr, st.turn);
+    st.pieces = apply_move_unchecked(st.pieces, m.pid, m.dc, m.dr, st.turn);
     st.turn = opp(st.turn);
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
     st.quick_eval = quick_eval_cpu(st.pieces, cpu_player);
@@ -2511,15 +2525,17 @@ static int td_history_score(const ThreadData& td, int pl, int ki, int dc, int dr
 static void td_update_history(ThreadData& td, int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = td.history[pl][ki][dc][dr];
-    v += depth * depth;
-    if (v > 32000) v = 32000;
+    int bonus = std::min(depth * depth, 1600);
+    v += bonus - v * std::abs(bonus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static void td_penalise_history(ThreadData& td, int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = td.history[pl][ki][dc][dr];
-    v -= depth * depth;
-    if (v < -32000) v = -32000;
+    int malus = -std::min(depth * depth, 1600);
+    v += malus - v * std::abs(malus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static int td_cont_history_score(const ThreadData& td, const MoveTriple* prev, int ki, int dc, int dr) {
@@ -2531,7 +2547,9 @@ static int td_cont_history_score(const ThreadData& td, const MoveTriple* prev, i
 static void td_update_cont_history(ThreadData& td, const MoveTriple* prev, int ki, int dc, int dr, int depth) {
     if (!prev || !on_board(prev->dc, prev->dr)) return;
     if (ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
-    int v = (int)td.cont_history[prev->dc][prev->dr][ki][dc][dr] + depth*depth;
+    int bonus = std::min(depth * depth, 1600);
+    int v = (int)td.cont_history[prev->dc][prev->dr][ki][dc][dr];
+    v += bonus - v * std::abs(bonus) / 32000;
     td.cont_history[prev->dc][prev->dr][ki][dc][dr] = (int16_t)std::max(-32000, std::min(32000, v));
 }
 
@@ -2543,15 +2561,19 @@ static int history_score(int pl, int ki, int dc, int dr) {
 static void update_history(int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = g_history[pl][ki][dc][dr];
-    v += depth * depth;
-    if (v > 32000) v = 32000;
+    // Stockfish 18 gravity: bonus - entry * |bonus| / MAX_HISTORY
+    // This naturally decays old values and prevents saturation.
+    int bonus = std::min(depth * depth, 1600);
+    v += bonus - v * std::abs(bonus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static void penalise_history(int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = g_history[pl][ki][dc][dr];
-    v -= depth * depth;
-    if (v < -32000) v = -32000;
+    int malus = -std::min(depth * depth, 1600);
+    v += malus - v * std::abs(malus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static int cont_history_score(const MoveTriple* prev, int ki, int dc, int dr) {
@@ -2563,7 +2585,9 @@ static int cont_history_score(const MoveTriple* prev, int ki, int dc, int dr) {
 static void update_cont_history(const MoveTriple* prev, int ki, int dc, int dr, int depth) {
     if (!prev || !on_board(prev->dc, prev->dr)) return;
     if (ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
-    int v = (int)g_cont_history[prev->dc][prev->dr][ki][dc][dr] + depth*depth;
+    int bonus = std::min(depth * depth, 1600);
+    int v = (int)g_cont_history[prev->dc][prev->dr][ki][dc][dr];
+    v += bonus - v * std::abs(bonus) / 32000;
     g_cont_history[prev->dc][prev->dr][ki][dc][dr] = (int16_t)std::max(-32000, std::min(32000, v));
 }
 
@@ -2770,7 +2794,10 @@ static int see(const PieceList& pieces, int col, int row,
     const Piece* target = piece_at_c(pieces, col, row);
     int gain = target ? piece_value_fast(target->kind) : 0;
 
-    PieceList np = apply_move(pieces, best_atk->id, col, row, attacker_player);
+    // SF18-style early exit: capturing with LVA and still ahead => prune
+    if (depth >= 2 && gain - best_val > 0) return gain - best_val;
+
+    PieceList np = apply_move_unchecked(pieces, best_atk->id, col, row, attacker_player);
     return gain - see(np, col, row, opp(attacker_player), depth+1);
 }
 
@@ -3775,8 +3802,11 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     // ── Internal Iterative Reduction (IIR) ───────────────────────────────
     // When we have no hash move, reduce depth by 1 instead of expensive IID.
     // The search at reduced depth will populate the TT for future iterations.
+    // FIX: Do NOT mutate `depth` in-place — that corrupts RFP/razoring margins,
+    // correction history update depth, and TT store depth. Use a separate variable.
+    int search_depth = depth;
     if (!hash_move_ptr && depth >= 6 && !pv_node) {
-        depth--;
+        search_depth = depth - 1;
     }
 
     // ── Corrected static eval (Stockfish 18 Correction History) ────────────
@@ -3893,6 +3923,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 ns.hash = nu.hash_before;
                 ns.quick_eval = nu.quick_eval_before;
                 ns.atk.valid = false;
+                ns.rebuild_caches();  // FIX: restore cached cmd positions/navy counts
 
                 if (node_is_max) {
                     if (null_val >= beta) {
@@ -3955,7 +3986,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         bool is_critical_capture = is_capture &&
             (target->kind=="C" || target->kind=="N" || target->kind=="Af" ||
              target->kind=="A" || target->kind=="T" || target->kind=="In");
-        int full_depth = depth - 1 + ((is_critical_capture && depth <= 4) ? 1 : 0);
+        int full_depth = search_depth - 1 + ((is_critical_capture && search_depth <= 4) ? 1 : 0);
         if (full_depth < 0) full_depth = 0;
 
         bool is_killer  = (ply<MAX_PLY &&
@@ -4031,7 +4062,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         int se_extension = 0;
         {
             const int tt_val = tte ? tte->val : 0;
-            if (is_hash_move && tte && tte->depth >= depth - 1 && depth >= 5 &&
+            if (is_hash_move && tte && tte->depth >= search_depth - 1 && search_depth >= 5 &&
                 !time_up() && std::abs(tt_val) < 30000) {
                 int sing_beta = tt_val - 90;
                 bool is_singular = true;
@@ -4041,7 +4072,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                     if (tested >= 16 || time_up()) break;
                     UndoMove su;
                     if (!make_move_inplace(st, om, cpu_player, su)) continue;
-                    int sv = alphabeta(st, depth - 2, sing_beta - 1, sing_beta, cpu_player, ply + 1, false, &om, td);
+                    int sv = alphabeta(st, search_depth - 2, sing_beta - 1, sing_beta, cpu_player, ply + 1, false, &om, td);
                     unmake_move_inplace(st, su);
                     ++tested;
                     if (sv >= sing_beta) { is_singular = false; break; }
@@ -4052,7 +4083,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                     bool doubly_singular = (near_miss == 0 && tested >= 4 && !pv_node);
                     se_extension = doubly_singular ? 2 : 1;
                 }
-            } else if (!is_hash_move && tte && depth >= 5 &&
+            } else if (!is_hash_move && tte && search_depth >= 5 &&
                        std::abs(tt_val) < 30000 && tte->flag == TT_LOWER) {
                 // Negative extension: TT reports another move scores >= beta here,
                 // so this non-best move is unlikely to matter — search it less.
@@ -4086,7 +4117,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         int ext_depth = full_depth + rule_ext;
         // Apply negative extension after positive cap — keeps it meaningful.
         if (se_extension < 0) ext_depth = std::max(0, ext_depth + se_extension);
-        if (ext_depth >= depth) ext_depth = depth - 1;
+        if (ext_depth >= search_depth) ext_depth = search_depth - 1;
         if (ext_depth < 0) ext_depth = 0;
         int child;
         if (move_index == 0) {
@@ -4096,11 +4127,18 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
             int new_depth = ext_depth;
 
             // ── LMR: table-driven reductions for late quiet moves ────────
-            if (is_quiet && move_index >= 2 && depth >= 2) {
-                int R = lmr_reduction(depth, move_index);
+            if (is_quiet && move_index >= 2 && search_depth >= 2) {
+                int R = lmr_reduction(search_depth, move_index);
                 if (pv_node) R -= 1;
                 if (improving) R -= 1;
-                if (!improving && depth >= 6) R += 1;
+                if (!improving && search_depth >= 6) R += 1;
+                // SF18: history-based LMR adjustment
+                // Good history → reduce less; bad history → reduce more.
+                if (moved_ki >= 0) {
+                    int hval = td ? td_history_score(*td, hist_pl, moved_ki, m.dc, m.dr)
+                                  : history_score(hist_pl, moved_ki, m.dc, m.dr);
+                    R -= hval / 6000;  // ±5 range from history
+                }
                 if (R < 0) R = 0;
                 new_depth = ext_depth - R;
                 if (new_depth < 1) new_depth = 1;
@@ -4241,9 +4279,15 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     // ── Update Correction History (Stockfish 18) ──────────────────────────
     // Only update on EXACT (inside-window) nodes: fail-high/low scores are
     // one-sided bounds and would bias the correction in the wrong direction.
+    // FIX: Both search_val and raw_static_eval must be from the same
+    // player's perspective. raw_static_eval is always from cpu_player's view.
+    // For min nodes (opponent's turn), negate both so the correction is
+    // computed from the opponent's perspective before storing.
     if (flag == TT_EXACT && depth >= 1 && std::abs(val) < 20000) {
+        int corr_val = node_is_max ? val : -val;
+        int corr_static = node_is_max ? raw_static_eval : -raw_static_eval;
         update_correction_history(h, st.pieces, node_is_max ? cpu_player : opp(cpu_player),
-                                  depth, val, raw_static_eval);
+                                  depth, corr_val, corr_static);
     }
     return val;
 }
@@ -5274,8 +5318,6 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
 
     return {false, {}};
 }
-
-
 // COORDINATE HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -5324,8 +5366,6 @@ static void load_all_textures(SDL_Renderer* ren) {
         if (ts) g_textures_small[kv.first] = ts;
     }
 }
-
-
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
