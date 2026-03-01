@@ -3,7 +3,7 @@ const ROWS = 12;
 
 const MODE_KEYS = ['full', 'marine', 'air', 'land'];
 const DIFFICULTY_KEYS = ['easy', 'medium', 'hard'];
-const LANGUAGE_KEYS = ['en', 'vi'];
+const LANGUAGE_KEYS = ['en', 'vi', 'zh', 'es', 'ru', 'fr', 'de'];
 const PLAYER_MODE_KEYS = ['single', 'local', 'online'];
 const THEME_KEYS = ['system', 'light', 'dark'];
 const THEME_STORAGE_KEY = 'commander-chess-theme';
@@ -241,7 +241,12 @@ const I18N = {
     },
     languageLabelByCode: {
       en: 'English',
-      vi: 'Vietnamese'
+      vi: 'Vietnamese',
+      zh: 'Chinese',
+      es: 'Spanish',
+      ru: 'Russian',
+      fr: 'French',
+      de: 'German'
     },
     playerModeLabelByCode: {
       single: 'Single Player (vs CPU)',
@@ -510,7 +515,12 @@ const I18N = {
     },
     languageLabelByCode: {
       en: 'English',
-      vi: 'Tiếng Việt'
+      vi: 'Tiếng Việt',
+      zh: 'Tiếng Trung',
+      es: 'Tiếng Tây Ban Nha',
+      ru: 'Tiếng Nga',
+      fr: 'Tiếng Pháp',
+      de: 'Tiếng Đức'
     },
     playerModeLabelByCode: {
       single: 'Một người chơi (đấu CPU)',
@@ -817,6 +827,8 @@ const setupOverlayEl = document.getElementById('setupOverlay');
 const setupKickerEl = document.getElementById('setupKicker');
 const setupTitleEl = document.getElementById('setupTitle');
 const setupSubEl = document.getElementById('setupSub');
+const setupLanguageLabelEl = document.getElementById('setupLanguageLabel');
+const setupLanguageSelectEl = document.getElementById('setupLanguageSelect');
 const presetQuickStartBtn = document.getElementById('presetQuickStartBtn');
 const presetClassicBtn = document.getElementById('presetClassicBtn');
 const presetCustomBtn = document.getElementById('presetCustomBtn');
@@ -4125,6 +4137,16 @@ function applySetupPreset({ theme = null, playerMode, mode, difficulty, side, au
   }
 }
 
+function setLanguageAndRefresh(language) {
+  if (!isValidLanguage(language)) return;
+  selectedLanguage = language;
+  applyLocalizedStaticText();
+  updateSetupSelectionUI();
+  updateHistoryUI();
+  updateStatus();
+  drawBoard();
+}
+
 function runQuickStartBeginnerFlow() {
   const launchConfig = {
     mode: 'full',
@@ -4164,6 +4186,7 @@ function applyLocalizedStaticText() {
   if (setupKickerEl) setupKickerEl.textContent = t('setupKicker');
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
+  if (setupLanguageLabelEl) setupLanguageLabelEl.textContent = t('languageLabel');
   updateSetupAboutToggleLabel();
   if (setupAboutTitleEl) setupAboutTitleEl.textContent = t('about');
   if (setupAboutNameLabelEl) setupAboutNameLabelEl.textContent = t('aboutName');
@@ -4335,6 +4358,12 @@ function applyLocalizedStaticText() {
   if (statLabelSelectionEl) statLabelSelectionEl.textContent = t('statSelection');
 
   const languageLabels = textMap('languageLabelByCode');
+  if (setupLanguageSelectEl) {
+    setupLanguageSelectEl.querySelectorAll('option').forEach((opt) => {
+      const lang = opt.value;
+      opt.textContent = languageLabels[lang] || lang;
+    });
+  }
   if (languageButtonsEl) {
     languageButtonsEl.querySelectorAll('.lang-btn').forEach((btn) => {
       const lang = btn.dataset.lang;
@@ -4438,6 +4467,7 @@ function updateSetupSelectionUI() {
       btn.classList.toggle('active', btn.dataset.lang === selectedLanguage);
     });
   }
+  if (setupLanguageSelectEl) setupLanguageSelectEl.value = selectedLanguage;
   if (setupThemeButtonsEl) {
     setupThemeButtonsEl.querySelectorAll('.theme-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.theme === selectedTheme);
@@ -4772,13 +4802,13 @@ if (languageButtonsEl) {
     const btn = ev.target.closest('.lang-btn');
     if (!btn) return;
     const language = btn.dataset.lang;
-    if (!isValidLanguage(language)) return;
-    selectedLanguage = language;
-    applyLocalizedStaticText();
-    updateSetupSelectionUI();
-    updateHistoryUI();
-    updateStatus();
-    drawBoard();
+    setLanguageAndRefresh(language);
+  });
+}
+
+if (setupLanguageSelectEl) {
+  setupLanguageSelectEl.addEventListener('change', () => {
+    setLanguageAndRefresh(setupLanguageSelectEl.value);
   });
 }
 

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.a74c74fe25c4.css" />
+  <link rel="stylesheet" href="/style.16a5367dd32a.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -24,6 +24,21 @@
       <p id="setupKicker" class="kicker">Mode Setup</p>
       <h2 id="setupTitle" class="setup-pixel-title">Welcome to Commander Chess</h2>
       <p id="setupSub" class="setup-sub">Choose your settings, then start the match.</p>
+
+      <div class="setup-language-top">
+        <label class="field" for="setupLanguageSelect">
+          <span id="setupLanguageLabel">Language</span>
+          <select id="setupLanguageSelect">
+            <option value="en">English</option>
+            <option value="vi">Vietnamese</option>
+            <option value="zh">Chinese</option>
+            <option value="es">Spanish</option>
+            <option value="ru">Russian</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+          </select>
+        </label>
+      </div>
 
       <section class="quick-presets">
         <button id="presetQuickStartBtn" class="quick-preset-btn preset-beginner" type="button">
@@ -42,9 +57,14 @@
 
       <div id="setupDetailOptions" class="setup-detail-options" hidden>
       <p id="languageLabel" class="setup-label">Language</p>
-      <div id="languageButtons" class="setup-grid setup-grid-two">
+      <div id="languageButtons" class="setup-grid setup-grid-language">
         <button class="lang-btn" data-lang="en" type="button">English</button>
         <button class="lang-btn" data-lang="vi" type="button">Vietnamese</button>
+        <button class="lang-btn" data-lang="zh" type="button">Chinese</button>
+        <button class="lang-btn" data-lang="es" type="button">Spanish</button>
+        <button class="lang-btn" data-lang="ru" type="button">Russian</button>
+        <button class="lang-btn" data-lang="fr" type="button">French</button>
+        <button class="lang-btn" data-lang="de" type="button">German</button>
       </div>
 
       <p id="setupThemeLabel" class="setup-label">Theme</p>
@@ -460,6 +480,6 @@
     </div>
   </section>
 
-  <script src="/app.1a84dba37e3a.js"></script>
+  <script src="/app.bfd738aa6f00.js"></script>
 </body>
 </html>

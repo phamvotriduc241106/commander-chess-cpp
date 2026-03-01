@@ -148,6 +148,11 @@ body {
   font-size: 0.82rem;
 }
 
+.setup-language-top {
+  margin: 0 0 12px;
+  max-width: 640px;
+}
+
 .quick-presets {
   display: grid;
   grid-template-columns: 1fr;
@@ -302,6 +307,10 @@ body {
 }
 
 .setup-grid-three {
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+}
+
+.setup-grid-language {
   grid-template-columns: repeat(3, minmax(120px, 1fr));
 }
 
@@ -2073,6 +2082,7 @@ html[data-theme="dark"] .field-theme-prominent {
   .side-panel { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); }
   .setup-grid-two { grid-template-columns: 1fr; }
   .setup-grid-three { grid-template-columns: 1fr; }
+  .setup-grid-language { grid-template-columns: 1fr; }
   .quick-presets { grid-template-columns: 1fr; }
   .mode-grid { grid-template-columns: 1fr; }
   .difficulty-grid { grid-template-columns: 1fr; }
@@ -2117,6 +2127,7 @@ html[data-theme="dark"] .field-theme-prominent {
   }
   .setup-grid-two { grid-template-columns: 1fr; }
   .setup-grid-three { grid-template-columns: 1fr; }
+  .setup-grid-language { grid-template-columns: 1fr; }
   .side-grid { grid-template-columns: 1fr; }
   .difficulty-grid { grid-template-columns: 1fr; }
   .online-code-actions { grid-template-columns: 1fr; }
