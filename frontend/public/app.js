@@ -23,7 +23,6 @@ const I18N = {
     setupRulesOpen: 'RULES',
     setupRulesClose: 'CLOSE RULES',
     setupAboutOpen: 'About',
-    setupAboutClose: 'Hide About',
     languageLabel: 'Language',
     playerModeLabel: 'Player Mode',
     onlinePanelTitle: 'Online Match',
@@ -293,7 +292,6 @@ const I18N = {
     setupRulesOpen: 'LUẬT',
     setupRulesClose: 'ĐÓNG LUẬT',
     setupAboutOpen: 'Giới thiệu',
-    setupAboutClose: 'Ẩn giới thiệu',
     languageLabel: 'Ngôn ngữ',
     playerModeLabel: 'Chế độ chơi',
     onlinePanelTitle: 'Trận đấu trực tuyến',
@@ -823,12 +821,6 @@ const presetQuickStartBtn = document.getElementById('presetQuickStartBtn');
 const presetClassicBtn = document.getElementById('presetClassicBtn');
 const presetCustomBtn = document.getElementById('presetCustomBtn');
 const setupAboutToggleBtn = document.getElementById('setupAboutToggleBtn');
-const setupAboutPanelEl = document.getElementById('setupAboutPanel');
-const setupAboutTitleEl = document.getElementById('setupAboutTitle');
-const setupAboutNameLabelEl = document.getElementById('setupAboutNameLabel');
-const setupAboutPositionLabelEl = document.getElementById('setupAboutPositionLabel');
-const setupAboutPositionValueEl = document.getElementById('setupAboutPositionValue');
-const setupAboutGithubLabelEl = document.getElementById('setupAboutGithubLabel');
 const setupDetailOptionsEl = document.getElementById('setupDetailOptions');
 const setupRulesToggleBtn = document.getElementById('setupRulesToggleBtn');
 const languageLabelEl = document.getElementById('languageLabel');
@@ -986,7 +978,6 @@ let boardScale = 1;
 let boardPinch = null;
 let setupRulesMenuOpen = false;
 let setupDetailsVisible = false;
-let setupAboutVisible = false;
 let startGamePending = false;
 let pendingRetryAction = null;
 let hasStartedGame = false;
@@ -4044,15 +4035,16 @@ function setSetupRulesMenuOpen(open) {
 
 function updateSetupAboutToggleLabel() {
   if (!setupAboutToggleBtn) return;
-  const label = setupAboutVisible ? t('setupAboutClose') : t('setupAboutOpen');
+  const label = t('setupAboutOpen');
   setupAboutToggleBtn.textContent = label;
-  setupAboutToggleBtn.setAttribute('aria-expanded', setupAboutVisible ? 'true' : 'false');
 }
 
-function setSetupAboutVisible(open) {
-  setupAboutVisible = !!open;
-  if (setupAboutPanelEl) setupAboutPanelEl.hidden = !setupAboutVisible;
-  updateSetupAboutToggleLabel();
+function openSetupAboutWindow() {
+  const aboutUrl = `${window.location.origin}/about.html?lang=${encodeURIComponent(selectedLanguage)}`;
+  const opened = window.open(aboutUrl, '_blank', 'noopener');
+  if (!opened) {
+    window.location.href = aboutUrl;
+  }
 }
 
 function setSetupDetailsVisible(open) {
@@ -4151,11 +4143,6 @@ function applyLocalizedStaticText() {
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
   updateSetupAboutToggleLabel();
-  if (setupAboutTitleEl) setupAboutTitleEl.textContent = t('about');
-  if (setupAboutNameLabelEl) setupAboutNameLabelEl.textContent = t('aboutName');
-  if (setupAboutPositionLabelEl) setupAboutPositionLabelEl.textContent = t('aboutPosition');
-  if (setupAboutPositionValueEl) setupAboutPositionValueEl.textContent = t('aboutPositionValue');
-  if (setupAboutGithubLabelEl) setupAboutGithubLabelEl.textContent = t('aboutGithub');
   if (presetQuickStartBtn) {
     const quickStrong = presetQuickStartBtn.querySelector('strong');
     const quickSpan = presetQuickStartBtn.querySelector('span');
@@ -4458,7 +4445,6 @@ function updateSetupSelectionUI() {
 function openSetupMenu() {
   clearSetupFlowCallbacks();
   setSetupDetailsVisible(false);
-  setSetupAboutVisible(false);
   setSetupRulesMenuOpen(false);
   setupOverlayEl.classList.add('show');
   if (joinMatchInputEl && onlineQueryMatchCode && !joinMatchInputEl.value) {
@@ -4711,7 +4697,7 @@ if (setupRulesToggleBtn) {
 
 if (setupAboutToggleBtn) {
   setupAboutToggleBtn.addEventListener('click', () => {
-    setSetupAboutVisible(!setupAboutVisible);
+    openSetupAboutWindow();
   });
 }
 
@@ -5165,7 +5151,6 @@ initializeThemePreference();
 initializeUiPrefs();
 setBoardScale(1, { skipLabelUpdate: true });
 setSetupRulesMenuOpen(false);
-setSetupAboutVisible(false);
 initializeRulesAccordion();
 renderCoords();
 setOnlineStatus('onlineStatusIdle', null, true);
