@@ -4122,11 +4122,11 @@ const cloudGameApi = {
   async move({ game_id, move }) {
     return cloudApiPost('/api/move', { game_id, move });
   },
-  async bot({ game_id }) {
-    return cloudApiPost('/api/bot', { game_id });
+  async bot({ game_id, difficulty }) {
+    return cloudApiPost('/api/bot', { game_id, difficulty });
   },
-  async hint() {
-    throw new Error(t('hintUnavailable'));
+  async hint({ game_id, difficulty }) {
+    return cloudApiPost('/api/hint', { game_id, difficulty });
   }
 };
 

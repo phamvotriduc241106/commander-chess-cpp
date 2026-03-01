@@ -30,6 +30,13 @@ std::string make_game_id() {
     return oss.str();
 }
 
+std::string normalize_difficulty(std::string d) {
+    for (char& ch : d) ch = (char)std::tolower((unsigned char)ch);
+    if (d == "easy" || d == "beginner") return "easy";
+    if (d == "hard" || d == "expert") return "hard";
+    return "medium";
+}
+
 json move_to_json(const commander::Move& m) {
     return json{{"pid", m.pid}, {"dc", m.dc}, {"dr", m.dr}};
 }
@@ -140,11 +147,7 @@ int main() {
                 if (m == "full" || m == "marine" || m == "air" || m == "land") game_mode = m;
             }
             if (!in.is_discarded() && in.is_object() && in.contains("difficulty")) {
-                std::string d = in.value("difficulty", "medium");
-                for (char& ch : d) ch = (char)std::tolower((unsigned char)ch);
-                if (d == "easy" || d == "beginner") difficulty = "easy";
-                else if (d == "hard" || d == "expert") difficulty = "hard";
-                else difficulty = "medium";
+                difficulty = normalize_difficulty(in.value("difficulty", "medium"));
             }
         }
 
@@ -226,6 +229,10 @@ int main() {
             return;
         }
 
+        if (in.contains("difficulty") && in["difficulty"].is_string()) {
+            it->second.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
+        }
+
         commander::Move m = commander::bot_move(it->second);
         if (m.pid < 0) {
             set_json(res, 400, json{{"error", "bot could not find a legal move"}});
@@ -233,6 +240,45 @@ int main() {
         }
 
         set_json(res, 200, json{{"move", move_to_json(m)}, {"state", state_to_json(commander::serialize_state(it->second))}});
+    });
+
+    register_post(svr, "/hint", [](const httplib::Request& req, httplib::Response& res) {
+        json in = json::parse(req.body, nullptr, false);
+        if (in.is_discarded() || !in.is_object()) {
+            set_json(res, 400, json{{"error", "invalid JSON body"}});
+            return;
+        }
+
+        std::string gid = in.value("game_id", "");
+        if (gid.empty()) {
+            set_json(res, 400, json{{"error", "missing game_id"}});
+            return;
+        }
+
+        std::lock_guard<std::mutex> lk(g_sessions_mu);
+        auto it = g_sessions.find(gid);
+        if (it == g_sessions.end()) {
+            set_json(res, 404, json{{"error", "game_id not found"}});
+            return;
+        }
+
+        if (it->second.game_over) {
+            set_json(res, 400, json{{"error", "game is already over"}});
+            return;
+        }
+
+        commander::GameState probe = it->second;
+        if (in.contains("difficulty") && in["difficulty"].is_string()) {
+            probe.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
+        }
+
+        commander::Move m = commander::bot_move(probe);
+        if (m.pid < 0) {
+            set_json(res, 400, json{{"error", "hint could not find a legal move"}});
+            return;
+        }
+
+        set_json(res, 200, json{{"move", move_to_json(m)}});
     });
 
     int port = 8080;
