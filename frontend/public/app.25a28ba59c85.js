@@ -801,6 +801,10 @@ const setupOverlayEl = document.getElementById('setupOverlay');
 const setupKickerEl = document.getElementById('setupKicker');
 const setupTitleEl = document.getElementById('setupTitle');
 const setupSubEl = document.getElementById('setupSub');
+const presetQuickStartBtn = document.getElementById('presetQuickStartBtn');
+const presetClassicBtn = document.getElementById('presetClassicBtn');
+const presetCustomBtn = document.getElementById('presetCustomBtn');
+const setupDetailOptionsEl = document.getElementById('setupDetailOptions');
 const setupRulesToggleBtn = document.getElementById('setupRulesToggleBtn');
 const languageLabelEl = document.getElementById('languageLabel');
 const languageButtonsEl = document.getElementById('languageButtons');
@@ -948,6 +952,7 @@ let boardFlipped = false;
 let boardScale = 1;
 let boardPinch = null;
 let setupRulesMenuOpen = false;
+let setupDetailsVisible = true;
 let startGamePending = false;
 let pendingRetryAction = null;
 let hasStartedGame = false;
@@ -3987,6 +3992,43 @@ function setSetupRulesMenuOpen(open) {
   updateSetupRulesToggleLabel();
 }
 
+function setSetupDetailsVisible(open) {
+  setupDetailsVisible = !!open;
+  if (setupDetailOptionsEl) setupDetailOptionsEl.hidden = !setupDetailsVisible;
+  if (presetCustomBtn) {
+    presetCustomBtn.classList.toggle('active', setupDetailsVisible);
+    presetCustomBtn.setAttribute('aria-expanded', setupDetailsVisible ? 'true' : 'false');
+  }
+}
+
+function applySetupPreset({ theme = null, playerMode, mode, difficulty, side, autoStart = false }) {
+  if (theme) applyTheme(theme, true);
+
+  if (isValidPlayerMode(playerMode)) {
+    const wasOnline = isOnlineMultiplayer();
+    selectedPlayerMode = playerMode;
+    if (wasOnline && !isOnlineMultiplayer() && state == null) {
+      clearOnlineSession(true);
+    }
+  }
+  if (isValidMode(mode)) selectedMode = mode;
+  if (isValidDifficulty(difficulty)) selectedDifficulty = difficulty;
+  if (side === 'red' || side === 'blue') selectedSide = side;
+
+  if (sideSelect) sideSelect.value = selectedSide;
+  if (difficultySelect) difficultySelect.value = selectedDifficulty;
+  setSetupDetailsVisible(false);
+  clearRetryAction();
+  updateSetupSelectionUI();
+  updateStatus();
+  drawBoard();
+
+  if (autoStart) {
+    const launchConfig = currentLaunchConfig();
+    runStartGame(launchConfig).catch((err) => showError(err, () => runStartGame(launchConfig)));
+  }
+}
+
 function applyLocalizedStaticText() {
   document.documentElement.lang = selectedLanguage;
   document.title = t('documentTitle');
@@ -3998,6 +4040,30 @@ function applyLocalizedStaticText() {
   if (setupKickerEl) setupKickerEl.textContent = t('setupKicker');
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
+  if (presetQuickStartBtn) {
+    const quickStrong = presetQuickStartBtn.querySelector('strong');
+    const quickSpan = presetQuickStartBtn.querySelector('span');
+    if (quickStrong) quickStrong.textContent = selectedLanguage === 'vi' ? '🚀 Vào Nhanh (Người Mới)' : '🚀 Quick Start (Beginner)';
+    if (quickSpan) quickSpan.textContent = selectedLanguage === 'vi'
+      ? 'System · 1 người · Full Battle · Beginner (Depth 4) · Chơi Xanh · Tự động bắt đầu'
+      : 'System theme · Single · Full Battle · Beginner (Depth 4) · Play Blue · Auto Start';
+  }
+  if (presetClassicBtn) {
+    const classicStrong = presetClassicBtn.querySelector('strong');
+    const classicSpan = presetClassicBtn.querySelector('span');
+    if (classicStrong) classicStrong.textContent = selectedLanguage === 'vi' ? '⚔️ Full Battle Cổ Điển' : '⚔️ Classic Full Battle';
+    if (classicSpan) classicSpan.textContent = selectedLanguage === 'vi'
+      ? '1 người · Full Battle · Intermediate (Depth 6) · Chơi Đỏ'
+      : 'Single · Full Battle · Intermediate (Depth 6) · Play Red';
+  }
+  if (presetCustomBtn) {
+    const customStrong = presetCustomBtn.querySelector('strong');
+    const customSpan = presetCustomBtn.querySelector('span');
+    if (customStrong) customStrong.textContent = selectedLanguage === 'vi' ? '⚙️ Tùy Chỉnh Chi Tiết' : '⚙️ Custom Setup';
+    if (customSpan) customSpan.textContent = selectedLanguage === 'vi'
+      ? 'Hiện / ẩn các tùy chọn chi tiết'
+      : 'Show / hide detailed options';
+  }
   updateSetupRulesToggleLabel();
   if (languageLabelEl) languageLabelEl.textContent = t('languageLabel');
   if (setupThemeLabelEl) setupThemeLabelEl.textContent = t('themeField');
@@ -4523,6 +4589,37 @@ if (quickRestartBtn) {
     const launchConfig = currentLaunchConfig();
     clearRetryAction();
     runStartGame(launchConfig).catch(err => showError(err, () => runStartGame(launchConfig)));
+  });
+}
+
+if (presetQuickStartBtn) {
+  presetQuickStartBtn.addEventListener('click', () => {
+    applySetupPreset({
+      theme: 'system',
+      playerMode: 'single',
+      mode: 'full',
+      difficulty: 'easy',
+      side: 'blue',
+      autoStart: true
+    });
+  });
+}
+
+if (presetClassicBtn) {
+  presetClassicBtn.addEventListener('click', () => {
+    applySetupPreset({
+      playerMode: 'single',
+      mode: 'full',
+      difficulty: 'medium',
+      side: 'red',
+      autoStart: false
+    });
+  });
+}
+
+if (presetCustomBtn) {
+  presetCustomBtn.addEventListener('click', () => {
+    setSetupDetailsVisible(!setupDetailsVisible);
   });
 }
 

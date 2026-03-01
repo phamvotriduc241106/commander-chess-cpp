@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.6d4e7e1c91c1.css" />
+  <link rel="stylesheet" href="/style.9c79eb3a5094.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -25,6 +25,22 @@
       <h2 id="setupTitle">Choose Language, Player Mode, Mode, Difficulty, and Side</h2>
       <p id="setupSub" class="setup-sub">Choose your settings, then start the match.</p>
 
+      <section class="quick-presets">
+        <button id="presetQuickStartBtn" class="quick-preset-btn preset-beginner" type="button">
+          <strong>🚀 Quick Start (Beginner)</strong>
+          <span>System theme · Single · Full Battle · Beginner (Depth 4) · Play Blue · Auto Start</span>
+        </button>
+        <button id="presetClassicBtn" class="quick-preset-btn preset-classic" type="button">
+          <strong>⚔️ Classic Full Battle</strong>
+          <span>Single · Full Battle · Intermediate (Depth 6) · Play Red</span>
+        </button>
+        <button id="presetCustomBtn" class="quick-preset-btn preset-custom" type="button" aria-controls="setupDetailOptions" aria-expanded="true">
+          <strong>⚙️ Custom Setup</strong>
+          <span>Show / hide detailed options</span>
+        </button>
+      </section>
+
+      <div id="setupDetailOptions" class="setup-detail-options">
       <p id="languageLabel" class="setup-label">Language</p>
       <div id="languageButtons" class="setup-grid setup-grid-two">
         <button class="lang-btn" data-lang="en" type="button">English</button>
@@ -166,6 +182,7 @@
           <button id="openRulesDocBtn" class="btn ghost rules-action-btn" type="button">VIEW FULL RULEBOOK (DOCX)</button>
         </div>
       </section>
+      </div>
 
       <button id="startModeBtn" class="btn primary setup-start" type="button">START GAME</button>
     </div>
@@ -387,6 +404,6 @@
     </div>
   </section>
 
-  <script src="/app.e252d4a9c36d.js"></script>
+  <script src="/app.25a28ba59c85.js"></script>
 </body>
 </html>
