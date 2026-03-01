@@ -137,6 +137,7 @@ const I18N = {
     aboutName: 'My name:',
     aboutPosition: 'Position:',
     aboutPositionValue: 'Vibe coder',
+    aboutGithub: 'GitHub:',
     aboutEmail: 'Email:',
     authSignInGoogle: 'SIGN IN WITH GOOGLE',
     authSignOut: 'SIGN OUT',
@@ -404,6 +405,7 @@ const I18N = {
     aboutName: 'Tên tôi:',
     aboutPosition: 'Vai trò:',
     aboutPositionValue: 'Vibe coder',
+    aboutGithub: 'GitHub:',
     aboutEmail: 'Email:',
     authSignInGoogle: 'ĐĂNG NHẬP GOOGLE',
     authSignOut: 'ĐĂNG XUẤT',
@@ -816,6 +818,11 @@ const setupSubEl = document.getElementById('setupSub');
 const presetQuickStartBtn = document.getElementById('presetQuickStartBtn');
 const presetClassicBtn = document.getElementById('presetClassicBtn');
 const presetCustomBtn = document.getElementById('presetCustomBtn');
+const setupAboutTitleEl = document.getElementById('setupAboutTitle');
+const setupAboutNameLabelEl = document.getElementById('setupAboutNameLabel');
+const setupAboutPositionLabelEl = document.getElementById('setupAboutPositionLabel');
+const setupAboutPositionValueEl = document.getElementById('setupAboutPositionValue');
+const setupAboutGithubLabelEl = document.getElementById('setupAboutGithubLabel');
 const setupDetailOptionsEl = document.getElementById('setupDetailOptions');
 const setupRulesToggleBtn = document.getElementById('setupRulesToggleBtn');
 const languageLabelEl = document.getElementById('languageLabel');
@@ -923,6 +930,7 @@ const aboutTitleEl = document.getElementById('aboutTitle');
 const aboutNameLabelEl = document.getElementById('aboutNameLabel');
 const aboutPositionLabelEl = document.getElementById('aboutPositionLabel');
 const aboutPositionValueEl = document.getElementById('aboutPositionValue');
+const aboutGithubLabelEl = document.getElementById('aboutGithubLabel');
 const aboutEmailLabelEl = document.getElementById('aboutEmailLabel');
 const authPanelEl = document.getElementById('authPanel');
 const authUserLabelEl = document.getElementById('authUserLabel');
@@ -4122,6 +4130,11 @@ function applyLocalizedStaticText() {
   if (setupKickerEl) setupKickerEl.textContent = t('setupKicker');
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
+  if (setupAboutTitleEl) setupAboutTitleEl.textContent = t('about');
+  if (setupAboutNameLabelEl) setupAboutNameLabelEl.textContent = t('aboutName');
+  if (setupAboutPositionLabelEl) setupAboutPositionLabelEl.textContent = t('aboutPosition');
+  if (setupAboutPositionValueEl) setupAboutPositionValueEl.textContent = t('aboutPositionValue');
+  if (setupAboutGithubLabelEl) setupAboutGithubLabelEl.textContent = t('aboutGithub');
   if (presetQuickStartBtn) {
     const quickStrong = presetQuickStartBtn.querySelector('strong');
     const quickSpan = presetQuickStartBtn.querySelector('span');
@@ -4272,6 +4285,7 @@ function applyLocalizedStaticText() {
   if (aboutNameLabelEl) aboutNameLabelEl.textContent = t('aboutName');
   if (aboutPositionLabelEl) aboutPositionLabelEl.textContent = t('aboutPosition');
   if (aboutPositionValueEl) aboutPositionValueEl.textContent = t('aboutPositionValue');
+  if (aboutGithubLabelEl) aboutGithubLabelEl.textContent = t('aboutGithub');
   if (aboutEmailLabelEl) aboutEmailLabelEl.textContent = t('aboutEmail');
   if (signInBtn) signInBtn.textContent = t('authSignInGoogle');
   if (signOutBtn) signOutBtn.textContent = t('authSignOut');

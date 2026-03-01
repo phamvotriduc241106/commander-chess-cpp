@@ -128,9 +128,10 @@ body {
 
 .quick-presets {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
   margin: 0 0 12px;
+  max-width: 640px;
 }
 
 .quick-preset-btn {
@@ -180,6 +181,27 @@ body {
 
 .setup-detail-options[hidden] {
   display: none !important;
+}
+
+.setup-about {
+  margin: 0 0 12px;
+  max-width: 640px;
+  border: 1px solid var(--c-shadow);
+  border-radius: 12px;
+  background: var(--c-panel-soft);
+  padding: 10px 12px;
+}
+
+.setup-about h3 {
+  margin: 0 0 8px;
+  font-family: "Orbitron", sans-serif;
+  font-size: 0.92rem;
+  letter-spacing: 0.06em;
+  color: var(--c-accent);
+}
+
+.setup-about-list {
+  font-size: 0.86rem;
 }
 
 .setup-label {
