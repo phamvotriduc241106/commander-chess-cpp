@@ -146,6 +146,7 @@ const I18N = {
     undoMove: 'UNDO LAST MOVE',
     undoUnavailable: 'No moves available to undo.',
     undoWhileThinking: 'Wait for the AI to finish thinking before undo.',
+    undoRebuilding: 'Rewinding game state...',
     aiThinkingOverlay: 'AI is thinking...',
     aiPreparingOverlay: 'AI preparing move...',
     hintThinking: 'Analyzing best move...',
@@ -458,6 +459,7 @@ const I18N = {
     undoMove: 'HOÀN TÁC NƯỚC CUỐI',
     undoUnavailable: 'Không còn nước đi để hoàn tác.',
     undoWhileThinking: 'Hãy đợi AI tính xong rồi mới hoàn tác.',
+    undoRebuilding: 'Đang tua lại trạng thái ván...',
     aiThinkingOverlay: 'AI đang suy nghĩ...',
     aiPreparingOverlay: 'AI chuẩn bị đi...',
     hintThinking: 'Đang phân tích nước tốt nhất...',
@@ -1081,6 +1083,7 @@ let state = null;
 let selectedPid = null;
 let botThinking = false;
 let hintThinking = false;
+let undoBusy = false;
 let autoBotTimer = null;
 
 let selectedLanguage = 'en';
@@ -1377,7 +1380,7 @@ function isSinglePlayerMode() {
 function shouldShowAiThinkingOverlay() {
   if (!aiThinkingOverlayEl || !state || !gameId) return false;
   if (!isSinglePlayerMode() || state.game_over || reviewIndex >= 0) return false;
-  return botThinking || hintThinking || state.turn !== humanSide();
+  return botThinking || hintThinking || undoBusy || state.turn !== humanSide();
 }
 
 function updateAiThinkingOverlay() {
@@ -1385,6 +1388,10 @@ function updateAiThinkingOverlay() {
   const visible = shouldShowAiThinkingOverlay();
   aiThinkingOverlayEl.hidden = !visible;
   if (!visible || !aiThinkingLabelEl) return;
+  if (undoBusy) {
+    aiThinkingLabelEl.textContent = t('undoRebuilding');
+    return;
+  }
   aiThinkingLabelEl.textContent = (botThinking || hintThinking) ? t('aiThinkingOverlay') : t('aiPreparingOverlay');
 }
 
@@ -1411,7 +1418,7 @@ function undoStepCountForCurrentState() {
 }
 
 function canUndoNow() {
-  return undoStepCountForCurrentState() > 0 && !botThinking && !hintThinking;
+  return undoStepCountForCurrentState() > 0 && !botThinking && !hintThinking && !undoBusy;
 }
 
 function applyUndoSteps(steps) {
@@ -1431,6 +1438,7 @@ function applyUndoSteps(steps) {
   guestMovePending = false;
   botThinking = false;
   hintThinking = false;
+  undoBusy = false;
   clearHintMove();
   clearBoardFx();
   closePostGameModal();
@@ -1444,21 +1452,104 @@ function applyUndoSteps(steps) {
   return true;
 }
 
-function requestUndo() {
-  if (isOnlineMultiplayer()) {
-    showError(new Error(t('undoUnavailable')));
-    return;
+function movePayloadFromHistoryEntry(entry) {
+  if (!entry || !entry.to) return null;
+  const pid = Number(entry.pid);
+  const dc = Number(entry.to.c);
+  const dr = Number(entry.to.r);
+  if (!Number.isFinite(pid) || !Number.isFinite(dc) || !Number.isFinite(dr)) return null;
+  return { pid, dc, dr };
+}
+
+async function rebuildCloudGameToMoveCount(targetMoveCount, sourceMoves) {
+  const replayCount = Math.max(0, Math.floor(Number(targetMoveCount) || 0));
+  const replayMoves = Array.isArray(sourceMoves) ? sourceMoves.slice(0, replayCount) : [];
+  const api = await ensureGameApi();
+  if (!api || api.name !== 'cloud') {
+    throw new Error(t('undoUnavailable'));
   }
-  if (botThinking || hintThinking) {
-    showError(new Error(t('undoWhileThinking')));
-    return;
+
+  const launchSide = sideSelect ? sideSelect.value : selectedSide;
+  const data = await api.newGame({
+    human_player: launchSide === 'blue' ? 'blue' : 'red',
+    game_mode: activeMode(),
+    difficulty: activeDifficulty()
+  });
+
+  let currentState = data.state;
+  const nextStateHistory = [cloneState(currentState)];
+  const nextMoveHistory = [];
+
+  for (const entry of replayMoves) {
+    const move = movePayloadFromHistoryEntry(entry);
+    if (!move || !moveIsLegal(move, currentState)) break;
+    const prev = cloneState(currentState);
+    const next = await api.move({ game_id: data.game_id, move });
+    currentState = next.state;
+    const fromSquare = findLastMoveFrom(prev, currentState);
+    nextMoveHistory.push({
+      player: currentState.last_move_player,
+      from: fromSquare || null,
+      to: { c: currentState.last_move.dc, r: currentState.last_move.dr },
+      capture: !!currentState.last_move_capture,
+      pid: currentState.last_move.pid
+    });
+    nextStateHistory.push(cloneState(currentState));
+  }
+
+  gameId = data.game_id;
+  state = currentState;
+  moveHistory = nextMoveHistory;
+  stateHistory = nextStateHistory;
+  reviewIndex = -1;
+  selectedPid = null;
+  lastMoveFrom = moveHistory.length > 0 ? (moveHistory[moveHistory.length - 1].from || null) : null;
+  guestMovePending = false;
+  botThinking = false;
+  hintThinking = false;
+  clearHintMove();
+  clearBoardFx();
+  closePostGameModal();
+  postGameShownSignature = '';
+  gameEndedAtMs = 0;
+  clearRetryAction();
+  updateHistoryUI();
+  updateStatus();
+  drawBoard();
+  maybeAutoBotTurn();
+}
+
+async function requestUndo() {
+  if (isOnlineMultiplayer()) {
+    throw new Error(t('undoUnavailable'));
+  }
+  if (botThinking || hintThinking || undoBusy) {
+    throw new Error(t('undoWhileThinking'));
   }
   const steps = undoStepCountForCurrentState();
   if (steps <= 0) {
-    showError(new Error(t('undoUnavailable')));
+    throw new Error(t('undoUnavailable'));
+  }
+
+  const targetMoveCount = Math.max(0, moveHistory.length - steps);
+  const api = await ensureGameApi();
+  const useCloudRebuild = isSinglePlayerMode() && api && api.name === 'cloud';
+  if (!useCloudRebuild) {
+    applyUndoSteps(steps);
     return;
   }
-  applyUndoSteps(steps);
+
+  const snapshot = moveHistory.slice();
+  undoBusy = true;
+  updateStatus();
+  drawBoard();
+  try {
+    await rebuildCloudGameToMoveCount(targetMoveCount, snapshot);
+  } finally {
+    undoBusy = false;
+    updateStatus();
+    drawBoard();
+  }
 }
 
 function announceStatusLive() {
@@ -3195,7 +3286,7 @@ function setStatusTheme() {
   if (isOnlineMultiplayer() && guestMovePending) {
     statusBarEl.classList.add('status-thinking');
     statusTagEl.textContent = t('statusThinkingTag');
-  } else if (!isLocalMultiplayer() && !isOnlineMultiplayer() && (botThinking || hintThinking || state.turn !== humanSide())) {
+  } else if (!isLocalMultiplayer() && !isOnlineMultiplayer() && (botThinking || hintThinking || undoBusy || state.turn !== humanSide())) {
     statusBarEl.classList.add('status-thinking');
     statusTagEl.textContent = t('statusThinkingTag');
   } else {
@@ -3251,6 +3342,8 @@ function updateStatus() {
     }
   } else if (isLocalMultiplayer()) {
     statusEl.textContent = t('localTurn', { side: sideCaps(state.turn) });
+  } else if (undoBusy) {
+    statusEl.textContent = t('undoRebuilding');
   } else if (hintThinking) {
     statusEl.textContent = t('hintThinking');
   } else if (botThinking || state.turn !== you) {
@@ -4350,7 +4443,7 @@ function clearAutoBotTimer() {
 function maybeAutoBotTurn() {
   clearAutoBotTimer();
   if (isLocalMultiplayer() || isOnlineMultiplayer()) return;
-  if (!state || !gameId || state.game_over || botThinking || hintThinking) return;
+  if (!state || !gameId || state.game_over || botThinking || hintThinking || undoBusy) return;
   if (reviewIndex >= 0) return;
   if (state.turn === humanSide()) return;
 
@@ -4367,6 +4460,7 @@ function updateBotButtonState() {
     || state.game_over
     || botThinking
     || hintThinking
+    || undoBusy
     || reviewIndex >= 0;
   if (botBtn) botBtn.disabled = disabled;
 
@@ -4378,6 +4472,7 @@ function updateBotButtonState() {
       || state.game_over
       || botThinking
       || hintThinking
+      || undoBusy
       || reviewIndex >= 0
       || state.turn !== humanSide();
     hintBtn.disabled = hintDisabled;
@@ -4860,6 +4955,7 @@ async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMo
   closePostGameModal();
   postGameShownSignature = '';
   botThinking = false;
+  undoBusy = false;
   guestMovePending = false;
   selectedPid = null;
   lastMoveFrom = null;
@@ -4930,7 +5026,7 @@ async function requestBot(force) {
   if (isLocalMultiplayer() || isOnlineMultiplayer()) return;
   if (!gameId || !state || state.game_over) return;
   if (!force && state.turn === humanSide()) return;
-  if (botThinking) return;
+  if (botThinking || undoBusy) return;
 
   clearHintMove();
   clearAutoBotTimer();
@@ -4964,7 +5060,7 @@ async function requestHint() {
   if (isLocalMultiplayer() || isOnlineMultiplayer()) return;
   if (!gameId || !state || state.game_over) return;
   if (reviewIndex >= 0) return;
-  if (botThinking || hintThinking) return;
+  if (botThinking || hintThinking || undoBusy) return;
   if (state.turn !== humanSide()) return;
 
   clearAutoBotTimer();
@@ -4995,7 +5091,7 @@ async function requestHint() {
 
 function onCellClick(ev) {
   if (tutorialActive) return;
-  if (!state || !gameId || state.game_over || botThinking || hintThinking) return;
+  if (!state || !gameId || state.game_over || botThinking || hintThinking || undoBusy) return;
   if (isOnlineMultiplayer() && guestMovePending) return;
   if (reviewIndex >= 0) {
     reviewIndex = -1;
@@ -5323,7 +5419,7 @@ if (hintBtn) {
 
 if (undoBtn) {
   undoBtn.addEventListener('click', () => {
-    requestUndo();
+    requestUndo().catch((err) => showError(err, () => requestUndo()));
   });
 }
 
