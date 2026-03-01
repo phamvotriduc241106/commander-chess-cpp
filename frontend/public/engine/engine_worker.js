@@ -41,7 +41,6 @@ async function ensureApi() {
     getPosition: moduleInstance.cwrap('cc_get_position', 'string', []),
     getBestMove: moduleInstance.cwrap('cc_get_best_move', 'string', ['number', 'number']),
     applyMove: moduleInstance.cwrap('cc_apply_move', 'number', ['string']),
-    getSprites: moduleInstance.cwrap('cc_get_sprites_json', 'string', []),
     getLastError: moduleInstance.cwrap('cc_get_last_error', 'string', [])
   };
 
@@ -99,10 +98,6 @@ async function handleCommand(cmd, payload) {
     const depth = Number(payload && payload.depth) || 0;
     const move = parseJsonOrThrow(core.getBestMove(timeMs, depth), 'cc_get_best_move');
     return move;
-  }
-
-  if (cmd === 'getSprites') {
-    return parseJsonOrThrow(core.getSprites(), 'cc_get_sprites_json');
   }
 
   throw new Error(`Unknown engine command: ${cmd}`);

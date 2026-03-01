@@ -4334,9 +4334,6 @@ async function cloudApiPost(path, payload) {
 
 const cloudGameApi = {
   name: 'cloud',
-  async sprites() {
-    return cloudApiGet('/api/sprites');
-  },
   async newGame({ human_player, game_mode, difficulty }) {
     return cloudApiPost('/api/new', { human_player, game_mode, difficulty });
   },
@@ -4362,10 +4359,6 @@ async function createWasmGameApi() {
 
   return {
     name: 'wasm',
-    async sprites() {
-      const sprites = await bridge.getSprites();
-      return { sprites: sprites || Object.create(null) };
-    },
     async newGame({ human_player, game_mode, difficulty }) {
       const state = await bridge.newGame({
         gameMode: game_mode,
@@ -4425,8 +4418,9 @@ async function ensureGameApi() {
 
 async function loadSprites() {
   try {
-    const api = await ensureGameApi();
-    const data = await api.sprites();
+    const res = await fetch('/piece_sprites.json', { cache: 'force-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
     spriteMap = data.sprites || Object.create(null);
   } catch (_) {
     spriteMap = Object.create(null);

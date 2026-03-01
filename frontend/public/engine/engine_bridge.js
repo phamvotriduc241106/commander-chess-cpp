@@ -63,12 +63,6 @@ export async function initEngine() {
   }
 }
 
-export async function getSprites() {
-  await initEngine();
-  const result = await callWorker('getSprites');
-  return result && result.sprites ? result.sprites : {};
-}
-
 export async function newGame({ gameMode = 'full', difficulty = 'medium', humanPlayer = 'red' } = {}) {
   await initEngine();
   return callWorker('newGame', { gameMode, difficulty, humanPlayer });
@@ -96,7 +90,6 @@ export async function getBestMove({ timeMs = 0, depth = 0 } = {}) {
 
 const engineBridge = {
   initEngine,
-  getSprites,
   newGame,
   setPosition,
   getPosition,

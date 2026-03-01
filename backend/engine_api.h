@@ -24,9 +24,6 @@ const char* cc_cpu_pick_move(int time_ms, int depth);
 // Apply move from JSON string ("pid/dc/dr"). Returns 1 on success.
 int cc_apply_move(const char* move_uci_or_custom);
 
-// Get sprites as JSON string: {"sprites":{...}}.
-const char* cc_get_sprites_json();
-
 // Retrieve last API error string.
 const char* cc_get_last_error();
 

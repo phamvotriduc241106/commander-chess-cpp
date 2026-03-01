@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace commander {
@@ -74,6 +73,5 @@ GameState new_game(const std::string& game_mode = "full",
 ActionStatus apply_move(GameState& state, const Move& move);
 Move bot_move(GameState& state); // returns {-1,-1,-1} on failure
 SerializedState serialize_state(const GameState& state);
-std::unordered_map<std::string, std::string> piece_sprites();
 
 } // namespace commander

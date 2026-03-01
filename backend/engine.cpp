@@ -303,12 +303,4 @@ SerializedState serialize_state(const GameState& state) {
     return out;
 }
 
-std::unordered_map<std::string, std::string> piece_sprites() {
-    ensure_engine_init();
-    std::unordered_map<std::string, std::string> out;
-    out.reserve(PIECE_B64.size());
-    for (const auto& kv : PIECE_B64) out.emplace(kv.first, kv.second);
-    return out;
-}
-
 } // namespace commander

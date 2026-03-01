@@ -367,17 +367,6 @@ CC_KEEPALIVE int cc_apply_move(const char* move_uci_or_custom) {
     return 1;
 }
 
-CC_KEEPALIVE const char* cc_get_sprites_json() {
-    std::lock_guard<ApiMutex> lk(g_api_mu);
-    clear_error();
-
-    json sprites = json::object();
-    for (const auto& kv : commander::piece_sprites()) {
-        sprites[kv.first] = kv.second;
-    }
-    return set_out_json(json{{"sprites", sprites}});
-}
-
 CC_KEEPALIVE const char* cc_get_last_error() {
     std::lock_guard<ApiMutex> lk(g_api_mu);
     return set_out_string(g_last_error);

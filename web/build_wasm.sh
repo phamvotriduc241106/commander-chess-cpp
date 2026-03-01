@@ -26,7 +26,7 @@ emcc \
   -sWASM=1 \
   -sMODULARIZE=1 \
   -sEXPORT_NAME=CommanderEngine \
-  -sEXPORTED_FUNCTIONS='["_cc_init","_cc_new_game","_cc_set_position","_cc_get_position","_cc_get_best_move","_cc_cpu_pick_move","_cc_apply_move","_cc_get_sprites_json","_cc_get_last_error"]' \
+  -sEXPORTED_FUNCTIONS='["_cc_init","_cc_new_game","_cc_set_position","_cc_get_position","_cc_get_best_move","_cc_cpu_pick_move","_cc_apply_move","_cc_get_last_error"]' \
   -sEXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
   -sALLOW_MEMORY_GROWTH=1 \
   -sDISABLE_EXCEPTION_CATCHING=0 \

@@ -124,14 +124,6 @@ int main() {
     svr.Get("/health", health_handler);
     svr.Get("/api/health", health_handler);
 
-    auto sprites_handler = [](const httplib::Request&, httplib::Response& res) {
-        json sprites = json::object();
-        for (const auto& kv : commander::piece_sprites()) sprites[kv.first] = kv.second;
-        set_json(res, 200, json{{"sprites", sprites}});
-    };
-    svr.Get("/sprites", sprites_handler);
-    svr.Get("/api/sprites", sprites_handler);
-
     register_post(svr, "/new", [](const httplib::Request& req, httplib::Response& res) {
         std::string human = "red";
         std::string game_mode = "full";
