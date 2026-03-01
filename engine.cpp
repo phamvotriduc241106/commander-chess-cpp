@@ -932,7 +932,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
                 }
                 if (!blocked) exposed = true;
             }
-            if (!exposed) filtered.set(sq);
+            if (exposed) filtered.set(sq);
         }
         return filtered;
     }
@@ -2426,6 +2426,7 @@ static const int CORR_TERR_SIZE     = 2048;
 static int g_corr_hist[2][CORR_HIST_SIZE] = {};
 static int g_corr_hist_mat[2][CORR_MAT_SIZE] = {};
 static int g_corr_hist_terrain[2][CORR_TERR_SIZE] = {};
+static EngineMutex g_corr_hist_mutex;
 static MoveTriple g_pv[MAX_PLY][MAX_PLY];
 static int g_pv_len[MAX_PLY];
 static MoveTriple g_counter[11][12];
@@ -2448,10 +2449,13 @@ static void reset_search_tables() {
     memset(g_counter_set, 0, sizeof(g_counter_set));
     // Correction history is soft-reset: halve values so prior game info fades
     // but strong patterns carry over (same approach as Stockfish inter-game).
-    for (int pi = 0; pi < 2; pi++) {
-        for (int i = 0; i < CORR_HIST_SIZE; i++) g_corr_hist[pi][i] /= 2;
-        for (int i = 0; i < CORR_MAT_SIZE;  i++) g_corr_hist_mat[pi][i] /= 2;
-        for (int i = 0; i < CORR_TERR_SIZE; i++) g_corr_hist_terrain[pi][i] /= 2;
+    {
+        std::lock_guard<EngineMutex> lk(g_corr_hist_mutex);
+        for (int pi = 0; pi < 2; pi++) {
+            for (int i = 0; i < CORR_HIST_SIZE; i++) g_corr_hist[pi][i] /= 2;
+            for (int i = 0; i < CORR_MAT_SIZE;  i++) g_corr_hist_mat[pi][i] /= 2;
+            for (int i = 0; i < CORR_TERR_SIZE; i++) g_corr_hist_terrain[pi][i] /= 2;
+        }
     }
     g_default_td.reset();
 }
@@ -2744,31 +2748,30 @@ static void update_correction_history(uint64_t hash, const PieceList& pieces,
     diff = std::max(-2000, std::min(2000, diff));  // cap individual sample
     int scale = std::max(1, std::min(depth, 16));
 
-    // Hash bucket update — exponential moving average.
+    // Hash/material/terrain bucket updates — synchronized for SMP safety.
     int hk = (int)((hash >> 4) & (CORR_HIST_SIZE - 1));
-    {
-        int& e = g_corr_hist[pi][hk];
-        e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
-            / CORR_WEIGHT_DENOM;
-        e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
-    }
-
-    // Material bucket update.
     int mk = material_corr_key(pieces, pi);
-    {
-        int& e = g_corr_hist_mat[pi][mk];
-        e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
-            / CORR_WEIGHT_DENOM;
-        e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
-    }
-
-    // Terrain/context bucket update.
     int tk = terrain_corr_key(pieces, pi);
     {
-        int& e = g_corr_hist_terrain[pi][tk];
-        e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
-            / CORR_WEIGHT_DENOM;
-        e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
+        std::lock_guard<EngineMutex> lk(g_corr_hist_mutex);
+        {
+            int& e = g_corr_hist[pi][hk];
+            e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
+                / CORR_WEIGHT_DENOM;
+            e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
+        }
+        {
+            int& e = g_corr_hist_mat[pi][mk];
+            e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
+                / CORR_WEIGHT_DENOM;
+            e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
+        }
+        {
+            int& e = g_corr_hist_terrain[pi][tk];
+            e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
+                / CORR_WEIGHT_DENOM;
+            e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
+        }
     }
 }
 
@@ -2783,9 +2786,13 @@ static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
     int hk = (int)((hash >> 4) & (CORR_HIST_SIZE - 1));
     int mk = material_corr_key(pieces, pi);
     int tk = terrain_corr_key(pieces, pi);
-    int hash_corr = g_corr_hist[pi][hk] / CORR_WEIGHT_DENOM;
-    int mat_corr  = g_corr_hist_mat[pi][mk] / CORR_WEIGHT_DENOM;
-    int terr_corr = g_corr_hist_terrain[pi][tk] / CORR_WEIGHT_DENOM;
+    int hash_corr = 0, mat_corr = 0, terr_corr = 0;
+    {
+        std::lock_guard<EngineMutex> lk(g_corr_hist_mutex);
+        hash_corr = g_corr_hist[pi][hk] / CORR_WEIGHT_DENOM;
+        mat_corr  = g_corr_hist_mat[pi][mk] / CORR_WEIGHT_DENOM;
+        terr_corr = g_corr_hist_terrain[pi][tk] / CORR_WEIGHT_DENOM;
+    }
     // Blend: 50% hash, 30% material, 20% terrain/context.
     int correction = (hash_corr * 5 + mat_corr * 3 + terr_corr * 2) / 10;
     correction = std::max(-180, std::min(180, correction));  // safety clamp
@@ -3902,7 +3909,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     }
 
     // ── Dynamic Null Move Pruning tuned for 11x12 volatility ──────────────
-    if (null_ok && depth >= 3 && !pv_node) {
+    bool stm_in_check = (commander_attackers_cached(st, st.turn) > 0);
+    if (null_ok && depth >= 3 && !pv_node && !stm_in_check) {
         int stm_pieces = 0;
         for (const auto& p : st.pieces) if (p.player == st.turn) stm_pieces++;
 
@@ -4500,6 +4508,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     g_nodes.store(0, std::memory_order_relaxed);
 
     SearchState root_st = make_search_state(pieces, cpu_player, cpu_player);
+    const std::vector<uint64_t> game_rep_history_copy = g_game_rep_history;
     seed_search_hash_path_from_history(g_game_rep_history, root_st.hash);
     AllMoves all_moves  = all_moves_for(root_st.pieces, cpu_player);
     if (all_moves.empty()) return {false, {}};
@@ -4638,6 +4647,8 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     auto worker = [&](int tid) {
         g_deadline = deadline;
         g_stop_flag = stop_flag;
+        g_game_rep_history = game_rep_history_copy;
+        seed_search_hash_path_from_history(g_game_rep_history, root_st.hash);
         reset_time_state();
         (void)tid;
 
@@ -5312,9 +5323,11 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
                            std::chrono::milliseconds((int)(soft_limit * 1000));
     g_deadline = shared.deadline;
 
+    const std::vector<uint64_t> game_rep_history_copy = g_game_rep_history;
     auto run_worker = [&](int thread_id) {
         g_stop_flag = external_stop;
         g_deadline = shared.deadline;
+        g_game_rep_history = game_rep_history_copy;
         reset_time_state();
         smp_worker(thread_id, pieces, cpu_player, max_depth, shared);
     };
