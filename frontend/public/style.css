@@ -204,6 +204,17 @@ body {
   font-size: 0.86rem;
 }
 
+.setup-about-wrap {
+  margin: 0 0 12px;
+  max-width: 640px;
+  display: grid;
+  gap: 8px;
+}
+
+.setup-about-toggle {
+  width: 100%;
+}
+
 .setup-label {
   margin: 10px 0 6px;
   color: var(--c-text-dim);

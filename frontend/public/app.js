@@ -22,6 +22,8 @@ const I18N = {
     setupSub: 'Quick Start runs beginner onboarding. Create Match opens full setup.',
     setupRulesOpen: 'RULES',
     setupRulesClose: 'CLOSE RULES',
+    setupAboutOpen: 'About',
+    setupAboutClose: 'Hide About',
     languageLabel: 'Language',
     playerModeLabel: 'Player Mode',
     onlinePanelTitle: 'Online Match',
@@ -290,6 +292,8 @@ const I18N = {
     setupSub: 'Vào nhanh sẽ chạy luật + hướng dẫn. Tạo trận sẽ mở thiết lập đầy đủ.',
     setupRulesOpen: 'LUẬT',
     setupRulesClose: 'ĐÓNG LUẬT',
+    setupAboutOpen: 'Giới thiệu',
+    setupAboutClose: 'Ẩn giới thiệu',
     languageLabel: 'Ngôn ngữ',
     playerModeLabel: 'Chế độ chơi',
     onlinePanelTitle: 'Trận đấu trực tuyến',
@@ -818,6 +822,8 @@ const setupSubEl = document.getElementById('setupSub');
 const presetQuickStartBtn = document.getElementById('presetQuickStartBtn');
 const presetClassicBtn = document.getElementById('presetClassicBtn');
 const presetCustomBtn = document.getElementById('presetCustomBtn');
+const setupAboutToggleBtn = document.getElementById('setupAboutToggleBtn');
+const setupAboutPanelEl = document.getElementById('setupAboutPanel');
 const setupAboutTitleEl = document.getElementById('setupAboutTitle');
 const setupAboutNameLabelEl = document.getElementById('setupAboutNameLabel');
 const setupAboutPositionLabelEl = document.getElementById('setupAboutPositionLabel');
@@ -980,6 +986,7 @@ let boardScale = 1;
 let boardPinch = null;
 let setupRulesMenuOpen = false;
 let setupDetailsVisible = false;
+let setupAboutVisible = false;
 let startGamePending = false;
 let pendingRetryAction = null;
 let hasStartedGame = false;
@@ -4035,6 +4042,19 @@ function setSetupRulesMenuOpen(open) {
   updateSetupRulesToggleLabel();
 }
 
+function updateSetupAboutToggleLabel() {
+  if (!setupAboutToggleBtn) return;
+  const label = setupAboutVisible ? t('setupAboutClose') : t('setupAboutOpen');
+  setupAboutToggleBtn.textContent = label;
+  setupAboutToggleBtn.setAttribute('aria-expanded', setupAboutVisible ? 'true' : 'false');
+}
+
+function setSetupAboutVisible(open) {
+  setupAboutVisible = !!open;
+  if (setupAboutPanelEl) setupAboutPanelEl.hidden = !setupAboutVisible;
+  updateSetupAboutToggleLabel();
+}
+
 function setSetupDetailsVisible(open) {
   setupDetailsVisible = !!open;
   if (setupDetailOptionsEl) setupDetailOptionsEl.hidden = !setupDetailsVisible;
@@ -4130,6 +4150,7 @@ function applyLocalizedStaticText() {
   if (setupKickerEl) setupKickerEl.textContent = t('setupKicker');
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
+  updateSetupAboutToggleLabel();
   if (setupAboutTitleEl) setupAboutTitleEl.textContent = t('about');
   if (setupAboutNameLabelEl) setupAboutNameLabelEl.textContent = t('aboutName');
   if (setupAboutPositionLabelEl) setupAboutPositionLabelEl.textContent = t('aboutPosition');
@@ -4437,6 +4458,7 @@ function updateSetupSelectionUI() {
 function openSetupMenu() {
   clearSetupFlowCallbacks();
   setSetupDetailsVisible(false);
+  setSetupAboutVisible(false);
   setSetupRulesMenuOpen(false);
   setupOverlayEl.classList.add('show');
   if (joinMatchInputEl && onlineQueryMatchCode && !joinMatchInputEl.value) {
@@ -4684,6 +4706,12 @@ startModeBtn.addEventListener('click', () => {
 if (setupRulesToggleBtn) {
   setupRulesToggleBtn.addEventListener('click', () => {
     setSetupRulesMenuOpen(!setupRulesMenuOpen);
+  });
+}
+
+if (setupAboutToggleBtn) {
+  setupAboutToggleBtn.addEventListener('click', () => {
+    setSetupAboutVisible(!setupAboutVisible);
   });
 }
 
@@ -5137,6 +5165,7 @@ initializeThemePreference();
 initializeUiPrefs();
 setBoardScale(1, { skipLabelUpdate: true });
 setSetupRulesMenuOpen(false);
+setSetupAboutVisible(false);
 initializeRulesAccordion();
 renderCoords();
 setOnlineStatus('onlineStatusIdle', null, true);

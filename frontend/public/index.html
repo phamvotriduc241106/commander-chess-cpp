@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.122f8f52c5cb.css" />
+  <link rel="stylesheet" href="/style.e1d5dbf52dfa.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -36,14 +36,17 @@
         </button>
       </section>
 
-      <section class="setup-about" aria-labelledby="setupAboutTitle">
-        <h3 id="setupAboutTitle">About</h3>
-        <ul class="about-list setup-about-list">
-          <li><span id="setupAboutNameLabel">My name:</span> Pham Vo Tri Duc</li>
-          <li><span id="setupAboutPositionLabel">Position:</span> <span id="setupAboutPositionValue">Vibe coder</span></li>
-          <li><span id="setupAboutGithubLabel">GitHub:</span> <a id="setupAboutGithubLink" href="https://github.com/phamvotriduc241106" target="_blank" rel="noopener">phamvotriduc241106</a></li>
-        </ul>
-      </section>
+      <div class="setup-about-wrap">
+        <button id="setupAboutToggleBtn" class="btn ghost setup-about-toggle" type="button" aria-controls="setupAboutPanel" aria-expanded="false">About</button>
+        <section id="setupAboutPanel" class="setup-about" aria-labelledby="setupAboutTitle" hidden>
+          <h3 id="setupAboutTitle">About</h3>
+          <ul class="about-list setup-about-list">
+            <li><span id="setupAboutNameLabel">My name:</span> Pham Vo Tri Duc</li>
+            <li><span id="setupAboutPositionLabel">Position:</span> <span id="setupAboutPositionValue">Vibe coder</span></li>
+            <li><span id="setupAboutGithubLabel">GitHub:</span> <a id="setupAboutGithubLink" href="https://github.com/phamvotriduc241106" target="_blank" rel="noopener">phamvotriduc241106</a></li>
+          </ul>
+        </section>
+      </div>
 
       <div id="setupDetailOptions" class="setup-detail-options" hidden>
       <p id="languageLabel" class="setup-label">Language</p>
@@ -449,6 +452,6 @@
     </div>
   </section>
 
-  <script src="/app.8fed6a89df3c.js"></script>
+  <script src="/app.258fb913edd1.js"></script>
 </body>
 </html>
