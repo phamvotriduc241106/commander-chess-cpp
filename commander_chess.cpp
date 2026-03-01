@@ -3,6 +3,18 @@
  * ====================================================
  * Player side is selectable in the mode menu (Red or Blue).
  *
+ * ── 2026 Strength Upgrade Summary (~+180 Elo target) ──────────────────────
+ *  1) Advanced Threat Evaluation (~+80 Elo):
+ *     hanging/undefended pressure, cross-domain attack bonuses, carrier
+ *     unload threat potential, commander attack amplification, and
+ *     win-condition piece targeting.
+ *  2) Terrain-Aware Correction History (~+70 Elo):
+ *     adds terrain/control/stacking/commander-water context to correction
+ *     history for stronger fortress recognition and eval stability.
+ *  3) Low-Depth Fortress & Special Draw Recognizer (~+30 Elo):
+ *     detects low-depth fortress deadlocks, variant-specific decisive states,
+ *     and carrier-loop draw patterns in AB + QSearch.
+ *
  * ── Search Engine ───────────────────────────────────────────────────────────
  * Built from scratch for Commander Chess rules; incorporates all major
  * Stockfish 18 search techniques adapted to this game's 12×11 board,
@@ -78,18 +90,32 @@
 #include <memory>
 #include <mutex>
 #include <limits>
+#include <new>
 #include <random>
 #include <set>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__unix__) || defined(__APPLE__)
-#include <sys/mman.h>
+#if defined(__EMSCRIPTEN__)
+#define COMMANDER_ENABLE_THREADS 0
+#else
+#define COMMANDER_ENABLE_THREADS 1
+#endif
+
+// WASM-SAFE: Browser builds run single-threaded by default.
+struct EngineNoopMutex {
+    void lock() noexcept {}
+    void unlock() noexcept {}
+};
+
+#if COMMANDER_ENABLE_THREADS
+using EngineMutex = std::mutex;
+#else
+using EngineMutex = EngineNoopMutex;
 #endif
 
 #if defined(__AVX2__)
@@ -163,8 +189,6 @@ static std::map<std::string,std::string> PIECE_B64 = {
     {"H_red", "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"},
     {"H_blue", "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"},
 };
-
-
 // ═══════════════════════════════════════════════════════════════════════════
 // SOUND ENGINE — synthesized WAV playback via SDL2 audio
 // ═══════════════════════════════════════════════════════════════════════════
@@ -210,14 +234,14 @@ struct AudioPlayback {
     size_t pos;
 };
 static std::vector<AudioPlayback> g_playbacks;
-static std::mutex g_audio_mutex;
+static EngineMutex g_audio_mutex;
 
 static void audio_callback(void* /*userdata*/, uint8_t* stream, int len) {
     int16_t* out = (int16_t*)stream;
     int n = len / 2;
     memset(stream, 0, len);
 
-    std::lock_guard<std::mutex> lk(g_audio_mutex);
+    std::lock_guard<EngineMutex> lk(g_audio_mutex);
     for (auto& pb : g_playbacks) {
         for (int i = 0; i < n && pb.pos < pb.buf->samples.size(); i++) {
             int32_t v = (int32_t)out[i] + pb.buf->samples[pb.pos++];
@@ -257,7 +281,7 @@ static void play_sound(const std::string& name) {
     if (!g_audio_ok) return;
     auto it = g_sounds.find(name);
     if (it == g_sounds.end()) return;
-    std::lock_guard<std::mutex> lk(g_audio_mutex);
+    std::lock_guard<EngineMutex> lk(g_audio_mutex);
     g_playbacks.push_back({&it->second, 0});
 }
 
@@ -365,7 +389,104 @@ struct Piece {
     int  carrier_id; // -1 when not carried; otherwise piece id of carrier
 };
 
-using PieceList = std::vector<Piece>;
+struct PieceList {
+    static constexpr std::size_t kMaxPieces = 132;
+    using value_type = Piece;
+    using size_type = std::size_t;
+    using iterator = Piece*;
+    using const_iterator = const Piece*;
+
+    std::array<Piece, kMaxPieces> items{};
+    size_type len = 0;
+
+    iterator begin() noexcept { return items.data(); }
+    iterator end() noexcept { return items.data() + len; }
+    const_iterator begin() const noexcept { return items.data(); }
+    const_iterator end() const noexcept { return items.data() + len; }
+    const_iterator cbegin() const noexcept { return items.data(); }
+    const_iterator cend() const noexcept { return items.data() + len; }
+
+    size_type size() const noexcept { return len; }
+    bool empty() const noexcept { return len == 0; }
+    void clear() noexcept { len = 0; }
+
+    void reserve(size_type n) {
+        if (n > kMaxPieces) throw std::length_error("PieceList reserve overflow");
+    }
+
+    value_type& operator[](size_type i) { return items[i]; }
+    const value_type& operator[](size_type i) const { return items[i]; }
+    value_type& front() { return items[0]; }
+    const value_type& front() const { return items[0]; }
+    value_type& back() { return items[len - 1]; }
+    const value_type& back() const { return items[len - 1]; }
+
+    value_type* data() noexcept { return items.data(); }
+    const value_type* data() const noexcept { return items.data(); }
+
+    void push_back(const value_type& v) {
+        if (len >= kMaxPieces) throw std::length_error("PieceList push_back overflow");
+        items[len++] = v;
+    }
+
+    void push_back(value_type&& v) {
+        if (len >= kMaxPieces) throw std::length_error("PieceList push_back overflow");
+        items[len++] = std::move(v);
+    }
+
+    template <typename... Args>
+    value_type& emplace_back(Args&&... args) {
+        if (len >= kMaxPieces) throw std::length_error("PieceList emplace_back overflow");
+        items[len] = value_type{std::forward<Args>(args)...};
+        return items[len++];
+    }
+
+    void pop_back() noexcept {
+        if (len > 0) --len;
+    }
+
+    iterator erase(iterator pos) {
+        size_type idx = static_cast<size_type>(pos - begin());
+        if (idx >= len) return end();
+        for (size_type i = idx; i + 1 < len; i++) items[i] = std::move(items[i + 1]);
+        --len;
+        return begin() + idx;
+    }
+
+    iterator erase(iterator first, iterator last) {
+        if (first == last) return first;
+        size_type idx_first = static_cast<size_type>(first - begin());
+        size_type idx_last = static_cast<size_type>(last - begin());
+        if (idx_first >= len) return end();
+        idx_last = std::min(idx_last, len);
+        size_type remove_count = idx_last - idx_first;
+        for (size_type i = idx_first; i + remove_count < len; i++) {
+            items[i] = std::move(items[i + remove_count]);
+        }
+        len -= remove_count;
+        return begin() + idx_first;
+    }
+
+    iterator insert(iterator pos, const value_type& v) {
+        size_type idx = static_cast<size_type>(pos - begin());
+        if (idx > len) idx = len;
+        if (len >= kMaxPieces) throw std::length_error("PieceList insert overflow");
+        for (size_type i = len; i > idx; i--) items[i] = std::move(items[i - 1]);
+        items[idx] = v;
+        ++len;
+        return begin() + idx;
+    }
+
+    iterator insert(iterator pos, value_type&& v) {
+        size_type idx = static_cast<size_type>(pos - begin());
+        if (idx > len) idx = len;
+        if (len >= kMaxPieces) throw std::length_error("PieceList insert overflow");
+        for (size_type i = len; i > idx; i--) items[i] = std::move(items[i - 1]);
+        items[idx] = std::move(v);
+        ++len;
+        return begin() + idx;
+    }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BOARD HELPERS
@@ -1530,12 +1651,19 @@ static inline bool valid_move_hint(const MoveTriple& m) {
     return m.pid >= 0 && on_board(m.dc, m.dr);
 }
 
-static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+// === CHANGED === Commander Chess special-rule summary for canonical move application:
+// 1) Carrying/stacking: legal friendly stacking updates carrier_id links and syncs passengers.
+// 2) Heroic promotion: promote_heroes_from_checks runs after every legal move resolution.
+// 3) AF anti-air interception: non-hero AF entering enemy AA range is destroyed.
+// 4) AF bombardment return: AF can capture then return to source square if destination stays capturable.
+// 5) Navy/Tank stay-and-fire: navy/tank may capture without entering forbidden terrain.
+
+// Internal implementation shared by both checked and unchecked apply_move variants.
+static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
     PieceList np = pieces;
     Piece* piece = piece_by_id(np, piece_id);
     if (!piece || piece->player != player) return np;
     if (!on_board(dc, dr)) return np;
-    if (!has_legal_destination(*piece, np, dc, dr)) return np;
 
     int src_col = piece->col;
     int src_row = piece->row;
@@ -1603,6 +1731,21 @@ static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int d
     return np;
 }
 
+// Checked version: verifies legality before applying. Used by GUI and opening book.
+static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+    const Piece* piece = piece_by_id_c(pieces, piece_id);
+    if (!piece || piece->player != player) return pieces;
+    if (!on_board(dc, dr)) return pieces;
+    if (!has_legal_destination(*piece, pieces, dc, dr)) return pieces;
+    return apply_move_impl(pieces, piece_id, dc, dr, player);
+}
+
+// Unchecked version: skips redundant legality check. Used by search when legality
+// was already verified by the caller (saves a full move generation per search node).
+static PieceList apply_move_unchecked(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+    return apply_move_impl(pieces, piece_id, dc, dr, player);
+}
+
 using AllMoves = std::vector<MoveTriple>;
 
 static AllMoves all_moves_for(const PieceList& pieces, const std::string& player) {
@@ -1615,7 +1758,6 @@ static AllMoves all_moves_for(const PieceList& pieces, const std::string& player
     }
     return result;
 }
-
 
 // True if `player` can win immediately in one move from `pieces`.
 static bool has_immediate_winning_move(const PieceList& pieces, const std::string& player) {
@@ -1681,19 +1823,15 @@ struct SearchState {
 };
 
 struct UndoMove {
-    bool used_snapshot = false;
+    // Always true in current implementation.
+    bool used_snapshot = true;
     PieceList snapshot_pieces;
+    Piece moved_piece{};
+    Piece captured_piece{};
+    bool had_capture = false;
     std::string turn_before;
     uint64_t hash_before = 0;
     int quick_eval_before = 0;
-    int moved_idx_before = -1;
-    int moved_idx_after = -1;
-    int moved_id = -1;
-    Piece moved_before{};
-    bool moved_removed = false;
-    bool had_capture = false;
-    int captured_idx_before = -1;
-    Piece captured_piece{};
 };
 
 static SearchState make_search_state(const PieceList& pieces, const std::string& turn,
@@ -1830,6 +1968,12 @@ static void build_attack_cache(SearchState& st) {
     st.atk.key = st.hash;
 }
 
+// === CHANGED ===
+// WASM-SAFE: avoid rebuilding attack cache unless state hash changed.
+static inline void ensure_attack_cache(SearchState& st) {
+    if (!st.atk.valid || st.atk.key != st.hash) build_attack_cache(st);
+}
+
 static bool make_move_inplace(SearchState& st, const MoveTriple& m,
                               const std::string& cpu_player, UndoMove& u);
 
@@ -1869,6 +2013,52 @@ static inline void tt_pack_move(TTEntry& e, const MoveTriple& m) {
 
 struct TTCluster { TTEntry e[TT_BUCKET]; };
 
+// === CHANGED ===
+struct EngineConfig {
+    bool use_mcts = false;
+    bool use_opening_book = true;
+    std::size_t tt_size_mb = 512;
+    int max_depth = 8;
+    int time_limit_ms = 3000;
+    int mcts_ab_depth = 3;
+    bool force_single_thread = false; // WASM-SAFE: true in browser builds.
+};
+
+static EngineConfig default_engine_config() {
+    EngineConfig cfg;
+#if defined(__EMSCRIPTEN__)
+    cfg.use_mcts = false;
+    cfg.use_opening_book = true;
+    cfg.tt_size_mb = 128;
+    cfg.max_depth = 8;
+    cfg.time_limit_ms = 3000;
+    cfg.mcts_ab_depth = 2;
+    cfg.force_single_thread = true;
+#endif
+    return cfg;
+}
+
+static EngineConfig g_engine_config = default_engine_config();
+static bool& g_use_mcts = g_engine_config.use_mcts;
+static bool& g_use_opening_book = g_engine_config.use_opening_book;
+
+static inline int engine_mcts_ab_depth() {
+    return std::max(1, g_engine_config.mcts_ab_depth);
+}
+
+static void set_engine_config(const EngineConfig& cfg) {
+    g_engine_config = cfg;
+    if (g_engine_config.tt_size_mb < 8) g_engine_config.tt_size_mb = 8;
+#if defined(__EMSCRIPTEN__)
+    g_engine_config.force_single_thread = true;
+    if (g_engine_config.tt_size_mb > 128) g_engine_config.tt_size_mb = 128;
+#endif
+}
+
+static const EngineConfig& get_engine_config() {
+    return g_engine_config;
+}
+
 // Contiguous TT arena with configurable size
 static size_t    g_tt_count = 0;      // number of clusters
 static size_t    g_tt_mask  = 0;      // count - 1 (power of 2)
@@ -1876,42 +2066,49 @@ static TTCluster* g_TT      = nullptr;
 static uint8_t   g_tt_age   = 0;
 static void*     g_tt_arena = nullptr;
 static size_t    g_tt_arena_bytes = 0;
+static constexpr std::align_val_t TT_ARENA_ALIGN = std::align_val_t(64);
+// Thread-safe TT striping for SMP probe/store.
+static constexpr size_t TT_LOCK_STRIPES = 1024; // power-of-two
+static std::array<EngineMutex, TT_LOCK_STRIPES> g_tt_locks;
+
+static inline bool tt_locking_enabled() {
+#if COMMANDER_ENABLE_THREADS
+    return !get_engine_config().force_single_thread;
+#else
+    return false;
+#endif
+}
+
+static inline EngineMutex& tt_lock_for_hash(uint64_t h) {
+    return g_tt_locks[h & (TT_LOCK_STRIPES - 1)];
+}
 
 static void tt_arena_release() {
     if (!g_tt_arena) return;
-#if defined(_WIN32)
-    VirtualFree(g_tt_arena, 0, MEM_RELEASE);
-#elif defined(__unix__) || defined(__APPLE__)
-    munmap(g_tt_arena, g_tt_arena_bytes);
-#else
-    std::free(g_tt_arena);
-#endif
+    // WASM-SAFE: arena uses malloc + explicit alignment metadata.
+    void* raw = reinterpret_cast<void**>(g_tt_arena)[-1];
+    std::free(raw);
     g_tt_arena = nullptr;
     g_tt_arena_bytes = 0;
 }
 
 static void* tt_arena_alloc(size_t bytes) {
     if (bytes == 0) throw std::bad_alloc();
-#if defined(_WIN32)
-    void* p = VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    if (!p) throw std::bad_alloc();
-    return p;
-#elif defined(__unix__) || defined(__APPLE__)
-    void* p = mmap(nullptr, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-    if (p == MAP_FAILED) throw std::bad_alloc();
-#if defined(MADV_RANDOM)
-    madvise(p, bytes, MADV_RANDOM);
-#endif
-#if defined(MADV_HUGEPAGE)
-    madvise(p, bytes, MADV_HUGEPAGE);
-#endif
-    return p;
-#else
-    // Last-resort fallback for unsupported platforms.
-    void* p = std::malloc(bytes);
-    if (!p) throw std::bad_alloc();
-    return p;
-#endif
+    const size_t align = static_cast<size_t>(TT_ARENA_ALIGN);
+    const size_t total = bytes + align + sizeof(void*);
+    void* raw = std::malloc(total);
+    if (!raw) throw std::bad_alloc();
+
+    void* aligned_base = static_cast<char*>(raw) + sizeof(void*);
+    size_t space = total - sizeof(void*);
+    void* aligned = std::align(align, bytes, aligned_base, space);
+    if (!aligned) {
+        std::free(raw);
+        throw std::bad_alloc();
+    }
+
+    reinterpret_cast<void**>(aligned)[-1] = raw;
+    return aligned;
 }
 
 static void tt_resize(size_t size_mb) {
@@ -1935,7 +2132,16 @@ static void tt_resize(size_t size_mb) {
 
 static void tt_ensure_allocated() {
     if (g_TT) return;
-    for (size_t mb : {2048, 1024, 512, 256, 128, 64, 32, 8}) {
+    const size_t preferred_mb = std::max<std::size_t>(8, get_engine_config().tt_size_mb);
+    if (preferred_mb > 0) {
+        try { tt_resize(preferred_mb); return; } catch (...) {}
+    }
+#if defined(__EMSCRIPTEN__)
+    for (size_t mb : {128, 96, 64, 48, 32, 16, 8}) {
+#else
+    for (size_t mb : {2048, 1024, 768, 512, 384, 256, 192, 128, 96, 64, 32, 8}) {
+#endif
+        if (mb == preferred_mb) continue;
         try { tt_resize(mb); return; } catch (...) {}
     }
 }
@@ -2039,6 +2245,23 @@ static SearchState make_search_state(const PieceList& pieces, const std::string&
     return st;
 }
 
+static void debug_validate_state_or_abort(const PieceList& pieces,
+                                          const std::string& last_mover,
+                                          const char* where) {
+#ifdef DEBUG
+    std::string reason;
+    if (!validate_state_for_sim(pieces, last_mover, &reason)) {
+        std::cerr << "[DEBUG] " << where << " produced invalid state: " << reason << "\n";
+        std::abort();
+    }
+#else
+    (void)pieces;
+    (void)last_mover;
+    (void)where;
+#endif
+}
+
+// === CHANGED ===
 static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
                                        const std::string& cpu_player, UndoMove& u) {
     u = UndoMove{};
@@ -2048,198 +2271,94 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
     if (st.pieces[moved_idx].player != st.turn) return false;
     if (!has_legal_destination(st.pieces[moved_idx], st.pieces, m.dc, m.dr)) return false;
 
-    u.used_snapshot = true;
     u.snapshot_pieces = st.pieces;
     u.turn_before = st.turn;
     u.hash_before = st.hash;
     u.quick_eval_before = st.quick_eval;
-    u.moved_id = m.pid;
+    u.moved_piece = st.pieces[moved_idx];
 
-    st.pieces = apply_move(st.pieces, m.pid, m.dc, m.dr, st.turn);
+    int captured_idx = find_piece_idx_at(st.pieces, m.dc, m.dr);
+    if (captured_idx >= 0 && st.pieces[captured_idx].player != st.turn) {
+        u.had_capture = true;
+        u.captured_piece = st.pieces[captured_idx];
+    }
+
+    st.pieces = apply_move_unchecked(st.pieces, m.pid, m.dc, m.dr, st.turn);
     st.turn = opp(st.turn);
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
     st.quick_eval = quick_eval_cpu(st.pieces, cpu_player);
     st.atk.valid = false;
     st.rebuild_caches();
+    debug_validate_state_or_abort(st.pieces, u.turn_before, "make_move_inplace");
     return true;
 }
 
+/*
+ * make_move_inplace safety policy (WASM-SAFE):
+ *  1) Carrying / stacking transitions (including nested passenger sync)
+ *  2) Heroic promotions after decisive checks
+ *  3) AF anti-air interception on non-hero entry
+ *  4) AF bombardment return-to-origin when landing is unsafe
+ *  5) Navy/Tank stay-and-fire behavior on non-enterable sea squares
+ *
+ * These rules are all handled by apply_move(). We always snapshot and replay
+ * that canonical path to avoid incremental state-corruption bugs.
+ */
 static bool make_move_inplace(SearchState& st, const MoveTriple& m,
                               const std::string& cpu_player, UndoMove& u) {
-    u = UndoMove{};
-    if (!on_board(m.dc, m.dr)) return false;
-    int moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
-    if (moved_idx < 0) return false;
-    if (st.pieces[moved_idx].player != st.turn) return false;
+    return make_move_inplace_snapshot(st, m, cpu_player, u);
 
-    int target_idx_probe = find_piece_idx_at(st.pieces, m.dc, m.dr);
-    bool target_is_stackable_friendly = false;
-    bool target_has_stack = false;
-    if (target_idx_probe >= 0 && st.pieces[target_idx_probe].player == st.turn) {
-        target_is_stackable_friendly = can_stack_together(st.pieces, st.pieces[moved_idx], st.pieces[target_idx_probe]);
-    }
-    if (target_idx_probe >= 0) {
-        target_has_stack = piece_has_carried_children(st.pieces, st.pieces[target_idx_probe].id);
-    }
-    bool mover_is_carried = (st.pieces[moved_idx].carrier_id >= 0);
-    bool mover_is_carrier = piece_has_carried_children(st.pieces, st.pieces[moved_idx].id);
-
-    // Snapshot mode only when this move touches stack state.
-    if (target_is_stackable_friendly || mover_is_carried || mover_is_carrier || target_has_stack) {
-        return make_move_inplace_snapshot(st, m, cpu_player, u);
-    }
-
-    u.turn_before = st.turn;
-    u.hash_before = st.hash;
-    u.quick_eval_before = st.quick_eval;
-    u.moved_id = m.pid;
-
-    u.moved_idx_before = moved_idx;
-    u.moved_before = st.pieces[moved_idx];
-
-    auto remove_piece = [&](int idx) {
-        const Piece oldp = st.pieces[idx];
-        st.quick_eval -= quick_piece_score_cpu(oldp, cpu_player);
-        st.hash ^= zobrist_piece_key(oldp);
-        st.pieces.erase(st.pieces.begin() + idx);
-    };
-    auto update_piece = [&](int idx, const Piece& np) {
-        const Piece oldp = st.pieces[idx];
-        st.quick_eval -= quick_piece_score_cpu(oldp, cpu_player);
-        st.hash ^= zobrist_piece_key(oldp);
-        st.pieces[idx] = np;
-        st.quick_eval += quick_piece_score_cpu(st.pieces[idx], cpu_player);
-        st.hash ^= zobrist_piece_key(st.pieces[idx]);
-    };
-    auto apply_hero_promotions = [&]() {
-        PieceList promoted = st.pieces;
-        promote_heroes_from_checks(promoted);
-        for (const auto& p2 : promoted) {
-            if (!p2.hero) continue;
-            int idx = find_piece_idx_by_id(st.pieces, p2.id);
-            if (idx < 0 || st.pieces[idx].hero) continue;
-            Piece np = st.pieces[idx];
-            np.hero = true;
-            update_piece(idx, np);
-        }
-    };
-
-    st.hash ^= g_ZobristTurn[st.turn=="red" ? 0 : 1];
-
-    int target_idx = find_piece_idx_at(st.pieces, m.dc, m.dr);
-    bool navy_stays = false;
-    if (target_idx >= 0) {
-        const Piece& target = st.pieces[target_idx];
-        if (target.player == st.turn) {
-            st.hash = u.hash_before;
-            st.quick_eval = u.quick_eval_before;
-            return false;
-        }
-        navy_stays = (st.pieces[moved_idx].kind=="N" && !is_navigable(m.dc,m.dr))
-                   || (st.pieces[moved_idx].kind=="T" && is_sea(m.dc,m.dr));
-        u.had_capture = true;
-        u.captured_idx_before = target_idx;
-        u.captured_piece = target;
-        remove_piece(target_idx);
-        if (target_idx < moved_idx) moved_idx--;
-    }
-
-    moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
-    if (moved_idx < 0) {
-        st.hash = u.hash_before;
-        st.quick_eval = u.quick_eval_before;
-        return false;
-    }
-
-    if (u.had_capture && st.pieces[moved_idx].kind=="Af" && !st.pieces[moved_idx].hero) {
-        if (in_aa_range(st.pieces, m.dc, m.dr, st.turn)) {
-            u.moved_removed = true;
-            u.moved_idx_after = moved_idx;
-            remove_piece(moved_idx);
-            apply_hero_promotions();
-            st.turn = opp(st.turn);
-            st.hash ^= g_ZobristTurn[st.turn=="red" ? 0 : 1];
-            st.atk.valid = false;
-            st.rebuild_caches();
-#ifdef DEBUG
-            if (!validate_state(st.pieces)) { std::abort(); }
+#if 0
+    // Future optimization:
+    // Re-introduce an incremental in-place move path once it is formally
+    // proven equivalent to snapshot replay for all special Commander rules.
 #endif
-            return true;
-        }
-    }
-
-    if (!navy_stays) {
-        Piece np = st.pieces[moved_idx];
-        np.col = m.dc;
-        np.row = m.dr;
-        update_piece(moved_idx, np);
-    }
-
-    moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
-    if (u.had_capture && moved_idx >= 0 &&
-        st.pieces[moved_idx].kind == "Af" &&
-        u.captured_piece.kind != "N" &&
-        u.captured_piece.kind != "Af" && !navy_stays) {
-        // Bombardment rule: unsafe AF land captures can return to origin.
-        if (square_capturable_by_player(st.pieces, m.dc, m.dr, opp(st.turn))) {
-            Piece np = st.pieces[moved_idx];
-            np.col = u.moved_before.col;
-            np.row = u.moved_before.row;
-            update_piece(moved_idx, np);
-        }
-    }
-
-    apply_hero_promotions();
-
-    u.moved_idx_after = find_piece_idx_by_id(st.pieces, m.pid);
-    st.turn = opp(st.turn);
-    st.hash ^= g_ZobristTurn[st.turn=="red" ? 0 : 1];
-    st.atk.valid = false;
-    st.rebuild_caches();
-#ifdef DEBUG
-    if (!validate_state(st.pieces)) { std::abort(); }
-#endif
-    return true;
 }
 
+/*
+ * unmake_move_inplace safety policy (perfect inverse of make):
+ *  1) Carrying / stacking links are restored exactly from snapshot.
+ *  2) Heroic promotions are reversed by snapshot restore.
+ *  3) AF anti-air interception outcomes are restored exactly.
+ *  4) AF bombardment return-to-origin outcomes are restored exactly.
+ *  5) Navy/Tank stay-and-fire outcomes are restored exactly.
+ *
+ * Full snapshot restore (pieces + turn + hash + eval) guarantees no drift.
+ */
 static void unmake_move_inplace(SearchState& st, const UndoMove& u) {
-    if (u.used_snapshot) {
-        st.turn = u.turn_before;
-        st.hash = u.hash_before;
-        st.quick_eval = u.quick_eval_before;
-        st.pieces = u.snapshot_pieces;
-        st.atk.valid = false;
-        st.rebuild_caches();
-#ifdef DEBUG
-        if (!validate_state(st.pieces)) { std::abort(); }
-#endif
-        return;
-    }
-
     st.turn = u.turn_before;
     st.hash = u.hash_before;
     st.quick_eval = u.quick_eval_before;
-
-    if (u.moved_removed) {
-        int idx = std::max(0, std::min((int)st.pieces.size(), u.moved_idx_after));
-        st.pieces.insert(st.pieces.begin()+idx, u.moved_before);
-    } else {
-        int moved_idx = find_piece_idx_by_id(st.pieces, u.moved_id);
-        if (moved_idx >= 0) st.pieces[moved_idx] = u.moved_before;
-        else {
-            int idx = std::max(0, std::min((int)st.pieces.size(), u.moved_idx_before));
-            st.pieces.insert(st.pieces.begin()+idx, u.moved_before);
-        }
-    }
-    if (u.had_capture) {
-        int idx = std::max(0, std::min((int)st.pieces.size(), u.captured_idx_before));
-        st.pieces.insert(st.pieces.begin()+idx, u.captured_piece);
-    }
+    st.pieces = u.snapshot_pieces;
     st.atk.valid = false;
     st.rebuild_caches();
-#ifdef DEBUG
-    if (!validate_state(st.pieces)) { std::abort(); }
-#endif
+    debug_validate_state_or_abort(st.pieces, opp(st.turn), "unmake_move_inplace");
+}
+
+// === CHANGED ===
+// Move-generator regression helper.
+static uint64_t perft_impl(SearchState& st, int depth, const std::string& cpu_player) {
+    if (depth <= 0) return 1ULL;
+    AllMoves moves = all_moves_for(st.pieces, st.turn);
+    if (depth == 1) return (uint64_t)moves.size();
+    uint64_t nodes = 0;
+    for (const auto& m : moves) {
+        UndoMove u;
+        if (!make_move_inplace(st, m, cpu_player, u)) continue;
+        nodes += perft_impl(st, depth - 1, cpu_player);
+        unmake_move_inplace(st, u);
+    }
+    return nodes;
+}
+
+static uint64_t perft(const PieceList& pieces, const std::string& turn, int depth) {
+    SearchState st = make_search_state(pieces, turn, turn);
+    return perft_impl(st, depth, turn);
+}
+
+static uint64_t perft(int depth) {
+    PieceList init = make_initial_pieces();
+    return perft(init, "red", depth);
 }
 
 // ── Killer moves & History ─────────────────────────────────────────────────
@@ -2280,8 +2399,10 @@ static int16_t g_cont_history[H_COLS][H_ROWS][H_KINDS][H_COLS][H_ROWS];
 // ── Correction History forward declarations (full implementation below SEE) ─
 static const int CORR_HIST_SIZE     = 16384;
 static const int CORR_MAT_SIZE      = 512;
+static const int CORR_TERR_SIZE     = 2048;
 static int g_corr_hist[2][CORR_HIST_SIZE] = {};
 static int g_corr_hist_mat[2][CORR_MAT_SIZE] = {};
+static int g_corr_hist_terrain[2][CORR_TERR_SIZE] = {};
 static MoveTriple g_pv[MAX_PLY][MAX_PLY];
 static int g_pv_len[MAX_PLY];
 static MoveTriple g_counter[11][12];
@@ -2307,6 +2428,7 @@ static void reset_search_tables() {
     for (int pi = 0; pi < 2; pi++) {
         for (int i = 0; i < CORR_HIST_SIZE; i++) g_corr_hist[pi][i] /= 2;
         for (int i = 0; i < CORR_MAT_SIZE;  i++) g_corr_hist_mat[pi][i] /= 2;
+        for (int i = 0; i < CORR_TERR_SIZE; i++) g_corr_hist_terrain[pi][i] /= 2;
     }
     g_default_td.reset();
 }
@@ -2314,49 +2436,64 @@ static void reset_search_tables() {
 // ── TT probe / store ──────────────────────────────────────────────────────
 static const TTEntry* tt_probe(uint64_t h) {
     if (!g_TT) return nullptr;
-    const TTCluster& c = g_TT[h & g_tt_mask];
-    const TTEntry* dp = &c.e[0];
-    const TTEntry* ar = &c.e[1];
-    bool dp_hit = (dp->key == h);
-    bool ar_hit = (ar->key == h);
-    if (dp_hit && ar_hit) {
-        // Prefer same-generation entry, then deeper
-        bool dp_current = (dp->age == g_tt_age);
-        bool ar_current = (ar->age == g_tt_age);
-        if (dp_current != ar_current) return dp_current ? dp : ar;
-        return (dp->depth >= ar->depth) ? dp : ar;
+    auto probe_impl = [&]() -> const TTEntry* {
+        const TTCluster& c = g_TT[h & g_tt_mask];
+        const TTEntry* dp = &c.e[0];
+        const TTEntry* ar = &c.e[1];
+        bool dp_hit = (dp->key == h);
+        bool ar_hit = (ar->key == h);
+        if (dp_hit && ar_hit) {
+            // Prefer same-generation entry, then deeper
+            bool dp_current = (dp->age == g_tt_age);
+            bool ar_current = (ar->age == g_tt_age);
+            if (dp_current != ar_current) return dp_current ? dp : ar;
+            return (dp->depth >= ar->depth) ? dp : ar;
+        }
+        if (dp_hit) return dp;
+        if (ar_hit) return ar;
+        return nullptr;
+    };
+    if (tt_locking_enabled()) {
+        std::lock_guard<EngineMutex> lk(tt_lock_for_hash(h));
+        return probe_impl();
     }
-    if (dp_hit) return dp;
-    if (ar_hit) return ar;
-    return nullptr;
+    return probe_impl();
 }
 
 static void tt_store(uint64_t h, int depth, int flag, int val, MoveTriple best) {
     if (!g_TT) return;
-    TTCluster& c = g_TT[h & g_tt_mask];
-    auto write_entry = [&](TTEntry& e) {
-        // Write key last so probes either see old entry or a mostly-complete new entry.
-        e.key   = 0;
-        e.depth = (int16_t)std::min(depth, (int)INT16_MAX);
-        e.flag  = (uint8_t)flag;
-        e.val   = (int16_t)std::max(-32000, std::min(32000, val));
-        e.age   = g_tt_age;
-        tt_pack_move(e, best);
-        e.key   = h;
+    auto store_impl = [&]() {
+        TTCluster& c = g_TT[h & g_tt_mask];
+        auto write_entry = [&](TTEntry& e) {
+            // Write key last so probes either see old entry or a mostly-complete new entry.
+            e.key   = 0;
+            e.depth = (int16_t)std::min(depth, (int)INT16_MAX);
+            e.flag  = (uint8_t)flag;
+            e.val   = (int16_t)std::max(-32000, std::min(32000, val));
+            e.age   = g_tt_age;
+            tt_pack_move(e, best);
+            e.key   = h;
+        };
+
+        // Slot 0: depth-preferred, but prefer overwriting stale entries.
+        TTEntry& depth_slot = c.e[0];
+        bool slot0_stale = (depth_slot.age != g_tt_age);
+        if (depth_slot.key == h) {
+            if (depth >= depth_slot.depth || flag == TT_EXACT) write_entry(depth_slot);
+        } else if (depth_slot.key == 0 || slot0_stale || depth >= depth_slot.depth) {
+            write_entry(depth_slot);
+        }
+
+        // Slot 1: always replace.
+        TTEntry& always_slot = c.e[1];
+        write_entry(always_slot);
     };
-
-    // Slot 0: depth-preferred, but prefer overwriting stale entries.
-    TTEntry& depth_slot = c.e[0];
-    bool slot0_stale = (depth_slot.age != g_tt_age);
-    if (depth_slot.key == h) {
-        if (depth >= depth_slot.depth || flag == TT_EXACT) write_entry(depth_slot);
-    } else if (depth_slot.key == 0 || slot0_stale || depth >= depth_slot.depth) {
-        write_entry(depth_slot);
+    if (tt_locking_enabled()) {
+        std::lock_guard<EngineMutex> lk(tt_lock_for_hash(h));
+        store_impl();
+        return;
     }
-
-    // Slot 1: always replace.
-    TTEntry& always_slot = c.e[1];
-    write_entry(always_slot);
+    store_impl();
 }
 
 static void store_killer(const MoveTriple& m, int ply) {
@@ -2388,15 +2525,17 @@ static int td_history_score(const ThreadData& td, int pl, int ki, int dc, int dr
 static void td_update_history(ThreadData& td, int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = td.history[pl][ki][dc][dr];
-    v += depth * depth;
-    if (v > 32000) v = 32000;
+    int bonus = std::min(depth * depth, 1600);
+    v += bonus - v * std::abs(bonus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static void td_penalise_history(ThreadData& td, int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = td.history[pl][ki][dc][dr];
-    v -= depth * depth;
-    if (v < -32000) v = -32000;
+    int malus = -std::min(depth * depth, 1600);
+    v += malus - v * std::abs(malus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static int td_cont_history_score(const ThreadData& td, const MoveTriple* prev, int ki, int dc, int dr) {
@@ -2408,7 +2547,9 @@ static int td_cont_history_score(const ThreadData& td, const MoveTriple* prev, i
 static void td_update_cont_history(ThreadData& td, const MoveTriple* prev, int ki, int dc, int dr, int depth) {
     if (!prev || !on_board(prev->dc, prev->dr)) return;
     if (ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
-    int v = (int)td.cont_history[prev->dc][prev->dr][ki][dc][dr] + depth*depth;
+    int bonus = std::min(depth * depth, 1600);
+    int v = (int)td.cont_history[prev->dc][prev->dr][ki][dc][dr];
+    v += bonus - v * std::abs(bonus) / 32000;
     td.cont_history[prev->dc][prev->dr][ki][dc][dr] = (int16_t)std::max(-32000, std::min(32000, v));
 }
 
@@ -2420,15 +2561,19 @@ static int history_score(int pl, int ki, int dc, int dr) {
 static void update_history(int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = g_history[pl][ki][dc][dr];
-    v += depth * depth;
-    if (v > 32000) v = 32000;
+    // Stockfish 18 gravity: bonus - entry * |bonus| / MAX_HISTORY
+    // This naturally decays old values and prevents saturation.
+    int bonus = std::min(depth * depth, 1600);
+    v += bonus - v * std::abs(bonus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static void penalise_history(int pl, int ki, int dc, int dr, int depth) {
     if (pl<0||pl>=H_PLAYERS||ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
     int& v = g_history[pl][ki][dc][dr];
-    v -= depth * depth;
-    if (v < -32000) v = -32000;
+    int malus = -std::min(depth * depth, 1600);
+    v += malus - v * std::abs(malus) / 32000;
+    v = std::max(-32000, std::min(32000, v));
 }
 
 static int cont_history_score(const MoveTriple* prev, int ki, int dc, int dr) {
@@ -2440,7 +2585,9 @@ static int cont_history_score(const MoveTriple* prev, int ki, int dc, int dr) {
 static void update_cont_history(const MoveTriple* prev, int ki, int dc, int dr, int depth) {
     if (!prev || !on_board(prev->dc, prev->dr)) return;
     if (ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
-    int v = (int)g_cont_history[prev->dc][prev->dr][ki][dc][dr] + depth*depth;
+    int bonus = std::min(depth * depth, 1600);
+    int v = (int)g_cont_history[prev->dc][prev->dr][ki][dc][dr];
+    v += bonus - v * std::abs(bonus) / 32000;
     g_cont_history[prev->dc][prev->dr][ki][dc][dr] = (int16_t)std::max(-32000, std::min(32000, v));
 }
 
@@ -2460,7 +2607,7 @@ static void update_cont_history(const MoveTriple* prev, int ki, int dc, int dr, 
 // RFP, Razoring, Probcut, Futility, and LMR accuracy.
 // ─────────────────────────────────────────────────────────────────────────
 
-// (CORR_HIST_SIZE, CORR_MAT_SIZE, g_corr_hist, g_corr_hist_mat declared above)
+// (CORR_HIST_SIZE, CORR_MAT_SIZE, CORR_TERR_SIZE and corr tables declared above)
 static const int CORR_MAX_VAL       = 32000;
 static const int CORR_WEIGHT_DENOM  = 256;    // fixed-point denominator
 
@@ -2474,6 +2621,92 @@ static int material_corr_key(const PieceList& pieces, int pi) {
         key += sign * piece_value_fast(p.kind) / 50;
     }
     return (((key % CORR_MAT_SIZE) + CORR_MAT_SIZE) % CORR_MAT_SIZE);
+}
+
+static bool commander_near_water_square(int c, int r) {
+    if (!on_board(c, r)) return false;
+    if (is_sea(c, r) || r == 5 || r == 6) return true;
+    for (int dc = -1; dc <= 1; dc++) for (int dr = -1; dr <= 1; dr++) {
+        int nc = c + dc, nr = r + dr;
+        if (!on_board(nc, nr)) continue;
+        if (is_sea(nc, nr) || nr == 5 || nr == 6) return true;
+    }
+    return false;
+}
+
+// === NEW: Terrain-Aware Correction History (~+70 Elo) ===
+// Terrain/control/stacking key for fortress-like structure recognition.
+static int terrain_corr_key(const PieceList& pieces, int pi) {
+    int sea_occ[2] = {0, 0};
+    int river_occ[2] = {0, 0};
+    int sky_control[2] = {0, 0};
+    int cmd_col[2] = {-1, -1};
+    int cmd_row[2] = {-1, -1};
+    int cmd_exposure[2] = {0, 0};
+    int cmd_stack_density[2] = {0, 0};
+    int navy_near_water_cmd[2] = {0, 0};
+
+    for (const auto& p : pieces) {
+        int s = player_idx(p.player);
+        if (!on_board(p.col, p.row)) continue;
+        if (is_sea(p.col, p.row)) sea_occ[s] += (p.kind == "N") ? 2 : 1;
+        if (p.row == 5 || p.row == 6) river_occ[s] += (p.kind == "E") ? 2 : 1;
+        if (p.kind == "Af") sky_control[s] += 3;
+        else if (p.kind == "Aa" || p.kind == "Ms") sky_control[s] += 2;
+        else if (p.kind == "N") sky_control[s] += 1;
+        if (p.kind == "C") { cmd_col[s] = p.col; cmd_row[s] = p.row; }
+    }
+
+    for (const auto& p : pieces) {
+        int s = player_idx(p.player);
+        if (p.kind == "N" && cmd_col[s] >= 0 && commander_near_water_square(cmd_col[s], cmd_row[s])) {
+            int dist = std::abs(p.col - cmd_col[s]) + std::abs(p.row - cmd_row[s]);
+            if (dist <= 4) navy_near_water_cmd[s] += (5 - dist);
+        }
+        if (p.carrier_id >= 0 && cmd_col[s] >= 0) {
+            int cheb = std::max(std::abs(p.col - cmd_col[s]), std::abs(p.row - cmd_row[s]));
+            if (cheb <= 2) cmd_stack_density[s] += 2;
+            else if (cheb <= 4) cmd_stack_density[s] += 1;
+        }
+    }
+
+    for (int s = 0; s < 2; s++) {
+        if (cmd_col[s] < 0) continue;
+        int c = cmd_col[s], r = cmd_row[s];
+        int enemy_touch = 0, friendly_touch = 0, open_touch = 0;
+        for (int dc = -1; dc <= 1; dc++) for (int dr = -1; dr <= 1; dr++) {
+            if (dc == 0 && dr == 0) continue;
+            int nc = c + dc, nr = r + dr;
+            if (!on_board(nc, nr)) continue;
+            const Piece* occ = piece_at_c(pieces, nc, nr);
+            if (!occ) open_touch++;
+            else if (player_idx(occ->player) == s) friendly_touch++;
+            else enemy_touch++;
+        }
+        cmd_exposure[s] = enemy_touch * 3 + open_touch - friendly_touch;
+        if (commander_near_water_square(c, r)) cmd_exposure[s] += 2;
+    }
+
+    auto diff = [&](const int arr[2]) { return arr[pi] - arr[1 - pi]; };
+    int d_sea = diff(sea_occ);
+    int d_river = diff(river_occ);
+    int d_sky = diff(sky_control);
+    int d_exposure = diff(cmd_exposure);
+    int d_stack = diff(cmd_stack_density);
+    int d_navy = diff(navy_near_water_cmd);
+
+    uint64_t mix = 0x9E3779B97F4A7C15ULL;
+    auto fold = [&](int v) {
+        uint64_t x = (uint64_t)(v + 512);
+        mix ^= x + 0x9E3779B97F4A7C15ULL + (mix << 6) + (mix >> 2);
+    };
+    fold(d_sea);
+    fold(d_river);
+    fold(d_sky);
+    fold(d_exposure);
+    fold(d_stack);
+    fold(d_navy);
+    return (int)(mix & (CORR_TERR_SIZE - 1));
 }
 
 static void update_correction_history(uint64_t hash, const PieceList& pieces,
@@ -2505,10 +2738,20 @@ static void update_correction_history(uint64_t hash, const PieceList& pieces,
             / CORR_WEIGHT_DENOM;
         e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
     }
+
+    // Terrain/context bucket update.
+    int tk = terrain_corr_key(pieces, pi);
+    {
+        int& e = g_corr_hist_terrain[pi][tk];
+        e = (e * (CORR_WEIGHT_DENOM - scale) + diff * scale * CORR_WEIGHT_DENOM)
+            / CORR_WEIGHT_DENOM;
+        e = std::max(-CORR_MAX_VAL, std::min(CORR_MAX_VAL, e));
+    }
 }
 
 // Returns the corrected static eval (raw + blended correction offset).
-// The blend weight (0.30 hash + 0.20 material) was tuned to be conservative —
+// The blend weight (0.50 hash + 0.30 material + 0.20 terrain/context) is
+// intentionally conservative to stabilize pruning without distorting eval shape.
 // enough to improve pruning without distorting the eval surface.
 static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
                                  const std::string& player, int raw_eval) {
@@ -2516,11 +2759,13 @@ static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
     if (pi < 0) return raw_eval;
     int hk = (int)((hash >> 4) & (CORR_HIST_SIZE - 1));
     int mk = material_corr_key(pieces, pi);
+    int tk = terrain_corr_key(pieces, pi);
     int hash_corr = g_corr_hist[pi][hk] / CORR_WEIGHT_DENOM;
     int mat_corr  = g_corr_hist_mat[pi][mk] / CORR_WEIGHT_DENOM;
-    // Blend: 60% hash, 40% material
-    int correction = (hash_corr * 3 + mat_corr * 2) / 5;
-    correction = std::max(-150, std::min(150, correction));  // safety clamp
+    int terr_corr = g_corr_hist_terrain[pi][tk] / CORR_WEIGHT_DENOM;
+    // Blend: 50% hash, 30% material, 20% terrain/context.
+    int correction = (hash_corr * 5 + mat_corr * 3 + terr_corr * 2) / 10;
+    correction = std::max(-180, std::min(180, correction));  // safety clamp
     return raw_eval + correction;
 }
 
@@ -2530,20 +2775,18 @@ static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
 static int see(const PieceList& pieces, int col, int row,
                const std::string& attacker_player, int depth=0) {
     if (depth > 6) return 0;
-    // Build context once for all pieces (avoids O(n²) rebuild per attacker).
-    MoveGenContext ctx = build_movegen_context(const_cast<PieceList&>(pieces));
+    // Build context once for all pieces in this SEE node.
+    MoveGenContext ctx = build_movegen_context(pieces);
+    int target_sq = sq_index(col, row);
     // Find least-valuable attacker for attacker_player
     const Piece* best_atk = nullptr;
     int best_val = 999999;
     for (auto& p : pieces) {
         if (p.player != attacker_player) continue;
-        auto mvs = get_moves_with_ctx(p, ctx);
-        for (auto& m : mvs) {
-            if (m.first==col && m.second==row) {
-                int v = std::max(1, piece_value_fast(p.kind));
-                if (v < best_val) { best_val=v; best_atk=&p; }
-                break;
-            }
+        BB132 attacks = get_move_mask_bitboard(p, ctx);
+        if (attacks.test(target_sq)) {
+            int v = std::max(1, piece_value_fast(p.kind));
+            if (v < best_val) { best_val=v; best_atk=&p; }
         }
     }
     if (!best_atk) return 0;
@@ -2551,7 +2794,10 @@ static int see(const PieceList& pieces, int col, int row,
     const Piece* target = piece_at_c(pieces, col, row);
     int gain = target ? piece_value_fast(target->kind) : 0;
 
-    PieceList np = apply_move(pieces, best_atk->id, col, row, attacker_player);
+    // SF18-style early exit: capturing with LVA and still ahead => prune
+    if (depth >= 2 && gain - best_val > 0) return gain - best_val;
+
+    PieceList np = apply_move_unchecked(pieces, best_atk->id, col, row, attacker_player);
     return gain - see(np, col, row, opp(attacker_player), depth+1);
 }
 
@@ -2638,13 +2884,13 @@ static int attackers_to_square(const PieceList& pieces, int col, int row,
         int pl = attacker_player=="red" ? 0 : 1;
         return cache->counts[pl][row][col];
     }
+    const int target_sq = sq_index(col, row);
+    MoveGenContext ctx = build_movegen_context(pieces);
     int attackers = 0;
     for (auto& p : pieces) {
         if (p.player != attacker_player) continue;
-        auto mvs = get_moves(p, const_cast<PieceList&>(pieces));
-        for (auto& m : mvs) {
-            if (m.first == col && m.second == row) { attackers++; break; }
-        }
+        BB132 attacks = get_move_mask_bitboard(p, ctx);
+        if (attacks.test(target_sq)) attackers++;
     }
     return attackers;
 }
@@ -2670,8 +2916,151 @@ static int commander_attackers_cached(SearchState& st, const std::string& player
     int pi = (player == "red") ? 0 : 1;
     int cc = st.cmd_col[pi], cr = st.cmd_row[pi];
     if (cc < 0) return 0;
-    build_attack_cache(st);
+    ensure_attack_cache(st);
     return attackers_to_square(st.pieces, cc, cr, opp(player), &st.atk);
+}
+
+struct ObjectiveCounts {
+    int commander = 0;
+    int navy = 0;
+    int air_force = 0;
+    int tank = 0;
+    int infantry = 0;
+    int artillery = 0;
+    int active_non_hq = 0;
+    int carried_units = 0;
+};
+
+static ObjectiveCounts collect_objective_counts(const PieceList& pieces, const std::string& side) {
+    ObjectiveCounts out;
+    for (const auto& p : pieces) {
+        if (p.player != side || !on_board(p.col, p.row)) continue;
+        if (p.kind != "H") out.active_non_hq++;
+        if (p.carrier_id >= 0) out.carried_units++;
+        if (p.kind == "C") out.commander++;
+        else if (p.kind == "N") out.navy++;
+        else if (p.kind == "Af") out.air_force++;
+        else if (p.kind == "T") out.tank++;
+        else if (p.kind == "In") out.infantry++;
+        else if (p.kind == "A") out.artillery++;
+    }
+    return out;
+}
+
+static bool side_fulfills_win_objective(const ObjectiveCounts& self,
+                                        const ObjectiveCounts& enemy) {
+    (void)self;
+    switch (g_game_mode) {
+    case GameMode::MARINE_BATTLE:
+        return enemy.commander == 0 || enemy.navy == 0;
+    case GameMode::AIR_BATTLE:
+        return enemy.commander == 0 || enemy.air_force == 0;
+    case GameMode::LAND_BATTLE:
+        return enemy.commander == 0 ||
+               (enemy.tank == 0 && enemy.infantry == 0 && enemy.artillery == 0);
+    case GameMode::FULL_BATTLE:
+    default:
+        return enemy.commander == 0;
+    }
+}
+
+// === NEW: Low-Depth Fortress & Special Draw Recognizer (~+30 Elo) ===
+// Triggered only at depth <= 3 (AB) and q_depth <= 3 (QSearch).
+// Handles:
+//  • objective-complete decisive states (variant-specific)
+//  • practical fortress/no-progress draws
+//  • carrier-stacking loop-like dead-draw signatures
+static bool low_depth_special_outcome(SearchState& st, const std::string& perspective,
+                                      int depth_hint, int* out_score) {
+    if (!out_score || depth_hint > 3) return false;
+
+    const std::string enemy = opp(perspective);
+    ObjectiveCounts me = collect_objective_counts(st.pieces, perspective);
+    ObjectiveCounts them = collect_objective_counts(st.pieces, enemy);
+
+    // Objective-based decisive recognizer (independent of "last mover").
+    bool me_wins = side_fulfills_win_objective(me, them);
+    bool them_wins = side_fulfills_win_objective(them, me);
+    if (me_wins || them_wins) {
+        if (me_wins && them_wins) {
+            *out_score = 0;
+            return true;
+        }
+        int base = 36000 + std::max(0, std::min(depth_hint, 6)) * 80;
+        *out_score = me_wins ? base : -base;
+        return true;
+    }
+
+    if (depth_hint <= 0) return false;
+    if (me.commander == 0 || them.commander == 0) return false;
+
+    ensure_attack_cache(st);
+    int my_pi = player_idx(perspective);
+    int op_pi = 1 - my_pi;
+    int my_cc = st.cmd_col[my_pi], my_cr = st.cmd_row[my_pi];
+    int op_cc = st.cmd_col[op_pi], op_cr = st.cmd_row[op_pi];
+    if (my_cc < 0 || op_cc < 0) return false;
+
+    // Fortress recognizer requires both commanders to be currently safe.
+    if (st.atk.counts[op_pi][my_cr][my_cc] > 0) return false;
+    if (st.atk.counts[my_pi][op_cr][op_cc] > 0) return false;
+
+    const int total_active = me.active_non_hq + them.active_non_hq;
+    if (total_active > 12) return false;
+
+    AllMoves my_moves = all_moves_for(st.pieces, perspective);
+    AllMoves op_moves = all_moves_for(st.pieces, enemy);
+    if (my_moves.empty() || op_moves.empty()) return false;
+
+    auto classify_activity = [&](const std::string& side,
+                                 const AllMoves& moves,
+                                 const Piece* enemy_cmd,
+                                 int* captures,
+                                 int* progress) {
+        *captures = 0;
+        *progress = 0;
+        int inspected = 0;
+        for (const auto& m : moves) {
+            if (++inspected > 96) break; // cap for browser/runtime safety
+            const Piece* tgt = piece_at_c(st.pieces, m.dc, m.dr);
+            if (tgt && tgt->player != side) { (*captures)++; continue; }
+
+            int idx = find_piece_idx_by_id(st.pieces, m.pid);
+            if (idx < 0 || !enemy_cmd) continue;
+            const Piece& p = st.pieces[idx];
+            if (p.kind == "C" || p.kind == "H") continue;
+            int before = std::abs(p.col - enemy_cmd->col) + std::abs(p.row - enemy_cmd->row);
+            int after = std::abs(m.dc - enemy_cmd->col) + std::abs(m.dr - enemy_cmd->row);
+            if (after + 1 < before) (*progress)++;
+        }
+    };
+
+    const Piece* my_enemy_cmd = nullptr;
+    const Piece* op_enemy_cmd = nullptr;
+    for (const auto& p : st.pieces) {
+        if (p.player == enemy && p.kind == "C") my_enemy_cmd = &p;
+        if (p.player == perspective && p.kind == "C") op_enemy_cmd = &p;
+    }
+
+    int my_caps = 0, my_progress = 0;
+    int op_caps = 0, op_progress = 0;
+    classify_activity(perspective, my_moves, my_enemy_cmd, &my_caps, &my_progress);
+    classify_activity(enemy, op_moves, op_enemy_cmd, &op_caps, &op_progress);
+
+    bool no_captures = (my_caps == 0 && op_caps == 0);
+    bool low_mobility = ((int)my_moves.size() <= 18 && (int)op_moves.size() <= 18);
+    bool no_progress = (my_progress <= 1 && op_progress <= 1);
+    bool carrier_loop_signature = (me.carried_units + them.carried_units >= 4);
+
+    if (no_captures && low_mobility && (no_progress || carrier_loop_signature)) {
+        if (!has_immediate_winning_move(st.pieces, perspective) &&
+            !has_immediate_winning_move(st.pieces, enemy)) {
+            *out_score = 0;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 // ── Static evaluation (Phase-Interpolated) ────────────────────────────────
@@ -2727,6 +3116,123 @@ static bool configure_eval_backend(const std::string& mode_raw, std::string* not
 
 static EvalBackendKind active_eval_backend() {
     return g_eval_backend;
+}
+
+static bool is_win_condition_piece_kind(const std::string& kind) {
+    return kind == "N" || kind == "Af" || kind == "T" || kind == "In" || kind == "A";
+}
+
+// === NEW: Advanced Threat Evaluation (~+80 Elo) ===
+// Fast classical threat model:
+//  • hanging/undefended pressure (scaled by unit value + carrier payload)
+//  • cross-domain threats (Af/Navy/Artillery/Missile pressure)
+//  • commander pressure and win-condition target pressure
+//  • potential discovered attacks from loaded carriers (unload threats)
+static int side_advanced_threat_score(const PieceList& pieces,
+                                      const std::string& side,
+                                      const AttackCache* cache,
+                                      const MoveGenContext& ctx) {
+    const std::string enemy = opp(side);
+    const int side_pi = player_idx(side);
+    const int enemy_pi = 1 - side_pi;
+    int score = 0;
+
+    const Piece* enemy_cmd = nullptr;
+    for (const auto& p : pieces) {
+        if (p.player == enemy && p.kind == "C") { enemy_cmd = &p; break; }
+    }
+
+    std::array<int, PieceList::kMaxPieces> payload_count{};
+    for (const auto& p : pieces) {
+        if (p.carrier_id >= 0 && p.carrier_id < (int)payload_count.size()) payload_count[p.carrier_id]++;
+    }
+
+    if (enemy_cmd) {
+        int direct = cache ? cache->counts[side_pi][enemy_cmd->row][enemy_cmd->col]
+                           : attackers_to_square(pieces, enemy_cmd->col, enemy_cmd->row, side, cache);
+        int defenders = cache ? cache->counts[enemy_pi][enemy_cmd->row][enemy_cmd->col]
+                              : attackers_to_square(pieces, enemy_cmd->col, enemy_cmd->row, enemy, cache);
+        score += direct * 120;
+        score += std::max(0, direct - defenders) * 170;
+    }
+
+    // Undefended / overloaded enemy pieces (higher value for carriers + objective units).
+    for (const auto& ep : pieces) {
+        if (ep.player != enemy || ep.kind == "H") continue;
+        int atk = cache ? cache->counts[side_pi][ep.row][ep.col]
+                        : attackers_to_square(pieces, ep.col, ep.row, side, cache);
+        if (atk == 0) continue;
+        int def = cache ? cache->counts[enemy_pi][ep.row][ep.col]
+                        : attackers_to_square(pieces, ep.col, ep.row, enemy, cache);
+        int val = piece_value_fast(ep.kind);
+        int weight = val / 9;
+        if (ep.kind == "C") weight += 260;
+        if (ep.kind == "N" || ep.kind == "Af") weight += 140;
+        if (is_win_condition_piece_kind(ep.kind)) weight += 80;
+        if (ep.id >= 0 && ep.id < (int)payload_count.size() && payload_count[ep.id] > 0) {
+            weight += 60 * payload_count[ep.id];
+        }
+        if (def == 0) score += weight + val / 4;
+        else if (atk > def) score += weight / 2 + (atk - def) * 24;
+        else if (atk == def && val >= 200) score += weight / 4;
+    }
+
+    // Cross-domain attack pressure + potential discovered attacks after unloading carriers.
+    for (const auto& p : pieces) {
+        if (p.player != side || p.kind == "H") continue;
+
+        int payload = (p.id >= 0 && p.id < (int)payload_count.size()) ? payload_count[p.id] : 0;
+        if (payload > 0 && enemy_cmd) {
+            int cmd_dist = std::abs(p.col - enemy_cmd->col) + std::abs(p.row - enemy_cmd->row);
+            if (cmd_dist <= 6) score += payload * std::max(0, 90 - cmd_dist * 12);
+        }
+
+        auto mvs = get_moves_with_ctx(p, ctx);
+        for (const auto& mv : mvs) {
+            const Piece* tgt = piece_at_c(pieces, mv.first, mv.second);
+            if (!tgt || tgt->player == side) continue;
+
+            int bonus = 0;
+            if (p.kind == "Af") {
+                if (tgt->kind != "Af") bonus += 36;
+                if (is_sea(tgt->col, tgt->row) || tgt->kind == "N") bonus += 30;
+            } else if (p.kind == "N") {
+                if (is_sea(tgt->col, tgt->row) || tgt->kind == "N" || tgt->kind == "Af") bonus += 34;
+            } else if (p.kind == "A" || p.kind == "Ms") {
+                int dist = std::max(std::abs(p.col - tgt->col), std::abs(p.row - tgt->row));
+                if (dist >= 2) bonus += 30 + dist * 4;
+            }
+
+            if (tgt->kind == "C") bonus += 160;
+            if (is_win_condition_piece_kind(tgt->kind)) bonus += 48;
+            score += bonus;
+        }
+    }
+
+    // Loaded passengers near enemy commander indicate likely discovered-attack motifs.
+    if (enemy_cmd) {
+        for (const auto& p : pieces) {
+            if (p.player != side || p.carrier_id < 0) continue;
+            const Piece* carrier = piece_by_id_c(pieces, p.carrier_id);
+            if (!carrier || carrier->player != side) continue;
+            int dist = std::abs(carrier->col - enemy_cmd->col) + std::abs(carrier->row - enemy_cmd->row);
+            if (dist > 7) continue;
+            int payload_threat = piece_value_fast(p.kind) / 10;
+            if (p.kind == "T" || p.kind == "A" || p.kind == "Ms" || p.kind == "Af" || p.kind == "C")
+                payload_threat += 45;
+            score += std::max(0, payload_threat + 70 - dist * 10);
+        }
+    }
+
+    return score;
+}
+
+static int advanced_threat_eval(const PieceList& pieces, const std::string& perspective,
+                                const AttackCache* cache = nullptr) {
+    MoveGenContext ctx = build_movegen_context(pieces);
+    int my_threats = side_advanced_threat_score(pieces, perspective, cache, ctx);
+    int opp_threats = side_advanced_threat_score(pieces, opp(perspective), cache, ctx);
+    return my_threats - opp_threats;
 }
 
 static int board_score_cpu_impl(const PieceList& pieces, const std::string& perspective,
@@ -2796,7 +3302,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
                     threat = THREAT_BONUS;
                 }
             } else if (oc) {
-                auto mvs = get_moves(p, const_cast<PieceList&>(pieces));
+                auto mvs = get_moves(p, pieces);
                 for (auto& m : mvs) {
                     if (m.first==oc->col && m.second==oc->row) {
                         threat = THREAT_BONUS; break;
@@ -2886,6 +3392,10 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         score += sign * total;
     }
 
+    // === NEW: Advanced Threat Evaluation (~+80 Elo) ===
+    // Uses attack-cache counts + single movegen context to keep the model fast.
+    score += advanced_threat_eval(pieces, perspective, cache);
+
     // ── Commander Safety (phase-scaled) ──────────────────────────────────
     if (my_cmd) {
         int attackers = attackers_to_square(pieces, my_cmd->col, my_cmd->row, opp(perspective), cache);
@@ -2908,7 +3418,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
         // Commander virtual mobility: count escape squares
         int escapes = 0;
-        auto cmd_moves = get_moves(*my_cmd, const_cast<PieceList&>(pieces));
+        auto cmd_moves = get_moves(*my_cmd, pieces);
         for (auto& m : cmd_moves) {
             int opp_pl = (perspective == "red") ? 1 : 0;
             if (!cache || cache->counts[opp_pl][m.second][m.first] == 0) escapes++;
@@ -3069,9 +3579,15 @@ static int quiesce(SearchState& st, int alpha, int beta,
     g_nodes.fetch_add(1, std::memory_order_relaxed);
     int stand = (perspective == cpu_player) ? st.quick_eval : -st.quick_eval;
     if (q_depth == 0) {
-        build_attack_cache(st);
+        ensure_attack_cache(st);
         int precise = board_score(st.pieces, perspective, &st.atk, &perspective);
         stand = (stand * 2 + precise) / 3;
+    }
+
+    if (q_depth <= 3) {
+        int special_score = 0;
+        if (low_depth_special_outcome(st, perspective, 3 - q_depth, &special_score))
+            return special_score;
     }
 
     // ── Commander in check detection (SF18 style) ─────────────────────────
@@ -3085,7 +3601,7 @@ static int quiesce(SearchState& st, int alpha, int beta,
             if (p.player == perspective && p.kind == "C") { my_cmd = &p; break; }
         }
         if (my_cmd) {
-            build_attack_cache(st);
+            ensure_attack_cache(st);
             int pl_atk = (perspective == "red") ? 1 : 0;
             in_check = (st.atk.counts[pl_atk][my_cmd->row][my_cmd->col] > 0);
         }
@@ -3183,7 +3699,8 @@ static thread_local bool g_time_up_cache = false;
 
 static bool time_up() {
     if (g_time_up_cache) return true;
-    if (++g_time_check_counter & 255) return false;  // check every 256 nodes
+    // WASM-SAFE: throttle wall-clock reads to once per 4096 node checks.
+    if (((++g_time_check_counter) & 4095ULL) != 0) return false;
     bool up = std::chrono::steady_clock::now() > g_deadline ||
               (g_stop_flag && g_stop_flag->load(std::memory_order_relaxed));
     if (up) g_time_up_cache = true;
@@ -3220,14 +3737,23 @@ static bool path_is_threefold(uint64_t h) {
     return false;
 }
 
+// Seed search repetition path from game history.
+// The current root hash is expected to be added by SearchPathGuard, so when
+// the history already ends with root_hash we drop one copy to avoid double-counting.
+static void seed_search_hash_path_from_history(const std::vector<uint64_t>& history,
+                                               uint64_t root_hash) {
+    g_search_hash_path = history;
+    if (!g_search_hash_path.empty() && g_search_hash_path.back() == root_hash) {
+        g_search_hash_path.pop_back();
+    }
+}
+
 static int alphabeta(SearchState& st, int depth, int alpha, int beta,
-                     bool is_max, const std::string& cpu_player, int ply,
+                     const std::string& cpu_player, int ply,
                      bool null_ok=true, const MoveTriple* prev_move=nullptr,
                      ThreadData* td=nullptr) {
     SearchPathGuard path_guard(st.hash);
     if (path_is_threefold(st.hash)) return 0;
-
-    (void)is_max;
     g_nodes.fetch_add(1, std::memory_order_relaxed);
     const bool node_is_max = (st.turn == cpu_player);
     if (ply < MAX_PLY) { if (td) td->pv_len[ply] = ply; else g_pv_len[ply] = ply; }
@@ -3248,6 +3774,11 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     if (!win.empty()) {
         int base = 40000 + depth*100;
         return (last_mover == cpu_player) ? base : -base;
+    }
+    if (depth <= 3 && depth > 0) {
+        int special_score = 0;
+        if (low_depth_special_outcome(st, cpu_player, depth, &special_score))
+            return special_score;
     }
     if (depth == 0) {
         // Quiescence is negamax-style from side-to-move perspective.
@@ -3271,8 +3802,11 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     // ── Internal Iterative Reduction (IIR) ───────────────────────────────
     // When we have no hash move, reduce depth by 1 instead of expensive IID.
     // The search at reduced depth will populate the TT for future iterations.
+    // FIX: Do NOT mutate `depth` in-place — that corrupts RFP/razoring margins,
+    // correction history update depth, and TT store depth. Use a separate variable.
+    int search_depth = depth;
     if (!hash_move_ptr && depth >= 6 && !pv_node) {
-        depth--;
+        search_depth = depth - 1;
     }
 
     // ── Corrected static eval (Stockfish 18 Correction History) ────────────
@@ -3333,13 +3867,13 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         // Quick check: if static eval already beats probcut_beta, likely a cut
         if (node_is_max && static_eval >= probcut_beta) {
             int pc_val = alphabeta(st, probcut_depth, probcut_beta - 1, probcut_beta,
-                                   node_is_max, cpu_player, ply, false, prev_move, td);
+                                   cpu_player, ply, false, prev_move, td);
             if (pc_val >= probcut_beta) return pc_val;
         }
         if (!node_is_max && static_eval <= alpha - 200) {
             int probcut_alpha = alpha - 200;
             int pc_val = alphabeta(st, probcut_depth, probcut_alpha, probcut_alpha + 1,
-                                   node_is_max, cpu_player, ply, false, prev_move, td);
+                                   cpu_player, ply, false, prev_move, td);
             if (pc_val <= probcut_alpha) return pc_val;
         }
     }
@@ -3381,22 +3915,20 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 int null_val;
                 if (node_is_max) {
                     // Minimax search: keep cpu_player perspective and do not negate.
-                    null_val = alphabeta(ns, depth-1-R, beta-1, beta,
-                                         false, cpu_player, ply+1, false, prev_move, td);
+                    null_val = alphabeta(ns, depth-1-R, beta-1, beta, cpu_player, ply+1, false, prev_move, td);
                 } else {
-                    null_val = alphabeta(ns, depth-1-R, alpha, alpha+1,
-                                         true, cpu_player, ply+1, false, prev_move, td);
+                    null_val = alphabeta(ns, depth-1-R, alpha, alpha+1, cpu_player, ply+1, false, prev_move, td);
                 }
                 ns.turn = nu.turn_before;
                 ns.hash = nu.hash_before;
                 ns.quick_eval = nu.quick_eval_before;
                 ns.atk.valid = false;
+                ns.rebuild_caches();  // FIX: restore cached cmd positions/navy counts
 
                 if (node_is_max) {
                     if (null_val >= beta) {
                         if (depth >= 8) {
-                            int verify = alphabeta(st, depth-R-1, beta-1, beta,
-                                                   node_is_max, cpu_player, ply+1, false, prev_move, td);
+                            int verify = alphabeta(st, depth-R-1, beta-1, beta, cpu_player, ply+1, false, prev_move, td);
                             if (verify >= beta) return beta;
                         } else {
                             return beta;
@@ -3405,8 +3937,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 } else {
                     if (null_val <= alpha) {
                         if (depth >= 8) {
-                            int verify = alphabeta(st, depth-R-1, alpha, alpha+1,
-                                                   node_is_max, cpu_player, ply+1, false, prev_move, td);
+                            int verify = alphabeta(st, depth-R-1, alpha, alpha+1, cpu_player, ply+1, false, prev_move, td);
                             if (verify <= alpha) return alpha;
                         } else {
                             return alpha;
@@ -3422,7 +3953,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     int pre_my_navy = st.navy_count[(cpu_player == "red") ? 0 : 1];
     AllMoves moves = all_moves_for(st.pieces, st.turn);
     if (moves.empty()) {
-        build_attack_cache(st);
+        ensure_attack_cache(st);
         return board_score(st.pieces, cpu_player, &st.atk, &st.turn);
     }
 
@@ -3442,8 +3973,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
     // Track quiet moves searched (for history malus on cutoff)
     struct QuietEntry { int ki; int dc; int dr; };
-    std::vector<QuietEntry> searched_quiets;
-    searched_quiets.reserve(16);
+    std::array<QuietEntry, 64> searched_quiets{};
+    int searched_quiet_count = 0;
 
     for (auto& m : moves) {
         if (time_up()) break;
@@ -3455,7 +3986,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         bool is_critical_capture = is_capture &&
             (target->kind=="C" || target->kind=="N" || target->kind=="Af" ||
              target->kind=="A" || target->kind=="T" || target->kind=="In");
-        int full_depth = depth - 1 + ((is_critical_capture && depth <= 4) ? 1 : 0);
+        int full_depth = search_depth - 1 + ((is_critical_capture && search_depth <= 4) ? 1 : 0);
         if (full_depth < 0) full_depth = 0;
 
         bool is_killer  = (ply<MAX_PLY &&
@@ -3531,7 +4062,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         int se_extension = 0;
         {
             const int tt_val = tte ? tte->val : 0;
-            if (is_hash_move && tte && tte->depth >= depth - 1 && depth >= 5 &&
+            if (is_hash_move && tte && tte->depth >= search_depth - 1 && search_depth >= 5 &&
                 !time_up() && std::abs(tt_val) < 30000) {
                 int sing_beta = tt_val - 90;
                 bool is_singular = true;
@@ -3541,8 +4072,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                     if (tested >= 16 || time_up()) break;
                     UndoMove su;
                     if (!make_move_inplace(st, om, cpu_player, su)) continue;
-                    int sv = alphabeta(st, depth - 2, sing_beta - 1, sing_beta,
-                                       false, cpu_player, ply + 1, false, &om, td);
+                    int sv = alphabeta(st, search_depth - 2, sing_beta - 1, sing_beta, cpu_player, ply + 1, false, &om, td);
                     unmake_move_inplace(st, su);
                     ++tested;
                     if (sv >= sing_beta) { is_singular = false; break; }
@@ -3553,7 +4083,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                     bool doubly_singular = (near_miss == 0 && tested >= 4 && !pv_node);
                     se_extension = doubly_singular ? 2 : 1;
                 }
-            } else if (!is_hash_move && tte && depth >= 5 &&
+            } else if (!is_hash_move && tte && search_depth >= 5 &&
                        std::abs(tt_val) < 30000 && tte->flag == TT_LOWER) {
                 // Negative extension: TT reports another move scores >= beta here,
                 // so this non-best move is unlikely to matter — search it less.
@@ -3587,21 +4117,28 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         int ext_depth = full_depth + rule_ext;
         // Apply negative extension after positive cap — keeps it meaningful.
         if (se_extension < 0) ext_depth = std::max(0, ext_depth + se_extension);
-        if (ext_depth >= depth) ext_depth = depth - 1;
+        if (ext_depth >= search_depth) ext_depth = search_depth - 1;
         if (ext_depth < 0) ext_depth = 0;
         int child;
         if (move_index == 0) {
             // PV move: full window
-            child = alphabeta(st, ext_depth, alpha, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+            child = alphabeta(st, ext_depth, alpha, beta, cpu_player, ply+1, true, &m, td);
         } else {
             int new_depth = ext_depth;
 
             // ── LMR: table-driven reductions for late quiet moves ────────
-            if (is_quiet && move_index >= 2 && depth >= 2) {
-                int R = lmr_reduction(depth, move_index);
+            if (is_quiet && move_index >= 2 && search_depth >= 2) {
+                int R = lmr_reduction(search_depth, move_index);
                 if (pv_node) R -= 1;
                 if (improving) R -= 1;
-                if (!improving && depth >= 6) R += 1;
+                if (!improving && search_depth >= 6) R += 1;
+                // SF18: history-based LMR adjustment
+                // Good history → reduce less; bad history → reduce more.
+                if (moved_ki >= 0) {
+                    int hval = td ? td_history_score(*td, hist_pl, moved_ki, m.dc, m.dr)
+                                  : history_score(hist_pl, moved_ki, m.dc, m.dr);
+                    R -= hval / 6000;  // ±5 range from history
+                }
                 if (R < 0) R = 0;
                 new_depth = ext_depth - R;
                 if (new_depth < 1) new_depth = 1;
@@ -3609,21 +4146,21 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
             // Zero-window (PVS) search
             if (node_is_max)
-                child = alphabeta(st, new_depth, alpha, alpha+1, !node_is_max, cpu_player, ply+1, true, &m, td);
+                child = alphabeta(st, new_depth, alpha, alpha+1, cpu_player, ply+1, true, &m, td);
             else
-                child = alphabeta(st, new_depth, beta-1,  beta,  !node_is_max, cpu_player, ply+1, true, &m, td);
+                child = alphabeta(st, new_depth, beta-1,  beta, cpu_player, ply+1, true, &m, td);
 
             // Re-search at full depth if LMR-reduced search beats the bound
             bool lmr_fail = node_is_max ? (child > alpha) : (child < beta);
             if (new_depth < ext_depth && lmr_fail) {
                 if (pv_node) {
                     // PV node: re-search directly with full window (skip extra ZW)
-                    child = alphabeta(st, ext_depth, alpha, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+                    child = alphabeta(st, ext_depth, alpha, beta, cpu_player, ply+1, true, &m, td);
                 } else {
                     if (node_is_max)
-                        child = alphabeta(st, ext_depth, alpha, alpha+1, !node_is_max, cpu_player, ply+1, true, &m, td);
+                        child = alphabeta(st, ext_depth, alpha, alpha+1, cpu_player, ply+1, true, &m, td);
                     else
-                        child = alphabeta(st, ext_depth, beta-1, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+                        child = alphabeta(st, ext_depth, beta-1, beta, cpu_player, ply+1, true, &m, td);
                 }
             }
 
@@ -3632,7 +4169,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 bool pvs_fail = node_is_max ? (child > alpha && child < beta)
                                             : (child < beta  && child > alpha);
                 if (pvs_fail && pv_node) {
-                    child = alphabeta(st, ext_depth, alpha, beta, !node_is_max, cpu_player, ply+1, true, &m, td);
+                    child = alphabeta(st, ext_depth, alpha, beta, cpu_player, ply+1, true, &m, td);
                 }
             }
         }
@@ -3641,7 +4178,9 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
         // Track searched quiet moves for history malus
         if (is_quiet && moved_ki >= 0) {
-            searched_quiets.push_back({moved_ki, m.dc, m.dr});
+            if (searched_quiet_count < (int)searched_quiets.size()) {
+                searched_quiets[searched_quiet_count++] = {moved_ki, m.dc, m.dr};
+            }
         }
 
         move_index++;
@@ -3672,7 +4211,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                                   update_cont_history(prev_move, moved_ki, m.dc, m.dr, depth); }
                     }
                     // History malus: penalise other quiet moves that didn't cause cutoff
-                    for (auto& sq : searched_quiets) {
+                    for (int qi = 0; qi < searched_quiet_count; qi++) {
+                        const auto& sq = searched_quiets[qi];
                         if (sq.ki == moved_ki && sq.dc == m.dc && sq.dr == m.dr) continue;
                         if (td) td_penalise_history(*td, hist_pl, sq.ki, sq.dc, sq.dr, depth);
                         else    penalise_history(hist_pl, sq.ki, sq.dc, sq.dr, depth);
@@ -3711,7 +4251,8 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                         else    { update_history(hist_pl, moved_ki, m.dc, m.dr, depth);
                                   update_cont_history(prev_move, moved_ki, m.dc, m.dr, depth); }
                     }
-                    for (auto& sq : searched_quiets) {
+                    for (int qi = 0; qi < searched_quiet_count; qi++) {
+                        const auto& sq = searched_quiets[qi];
                         if (sq.ki == moved_ki && sq.dc == m.dc && sq.dr == m.dr) continue;
                         if (td) td_penalise_history(*td, hist_pl, sq.ki, sq.dc, sq.dr, depth);
                         else    penalise_history(hist_pl, sq.ki, sq.dc, sq.dr, depth);
@@ -3729,7 +4270,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     }
 
     if (move_index == 0) {
-        build_attack_cache(st);
+        ensure_attack_cache(st);
         return board_score(st.pieces, cpu_player, &st.atk, &st.turn);
     }
 
@@ -3738,9 +4279,15 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     // ── Update Correction History (Stockfish 18) ──────────────────────────
     // Only update on EXACT (inside-window) nodes: fail-high/low scores are
     // one-sided bounds and would bias the correction in the wrong direction.
+    // FIX: Both search_val and raw_static_eval must be from the same
+    // player's perspective. raw_static_eval is always from cpu_player's view.
+    // For min nodes (opponent's turn), negate both so the correction is
+    // computed from the opponent's perspective before storing.
     if (flag == TT_EXACT && depth >= 1 && std::abs(val) < 20000) {
+        int corr_val = node_is_max ? val : -val;
+        int corr_static = node_is_max ? raw_static_eval : -raw_static_eval;
         update_correction_history(h, st.pieces, node_is_max ? cpu_player : opp(cpu_player),
-                                  depth, val, raw_static_eval);
+                                  depth, corr_val, corr_static);
     }
     return val;
 }
@@ -3754,14 +4301,13 @@ struct AIResult { bool found; MoveTriple move; };
 // Architecture:
 //   • Root:  Monte-Carlo Tree Search with PUCT selection guided by a
 //            heuristic "policy head" (captures/mobility/positional priors).
-//   • Leaf:  Alpha-beta at MCTS_AB_DEPTH plies — acts as the "value head".
+//   • Leaf:  Alpha-beta at engine_mcts_ab_depth() plies — acts as the "value head".
 //   • This eliminates the horizon effect that pure AB suffers at the root:
 //     promising moves receive exponentially more AB evaluations, naturally
 //     extending the effective search horizon.
 // ────────────────────────────────────────────────────────────────────────────
 
 static constexpr float MCTS_CPUCT    = 1.8f;  // exploration constant
-static constexpr int   MCTS_AB_DEPTH = 3;     // AB plies per leaf evaluation (was 5; 3 gives ~2× more sims)
 static constexpr float MCTS_VIRTUAL_LOSS = 0.35f;
 static constexpr int   MCTS_MAX_THREADS = 8;
 static constexpr int   MCTS_EVAL_BATCH_CPU = 16;
@@ -3931,6 +4477,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     g_nodes.store(0, std::memory_order_relaxed);
 
     SearchState root_st = make_search_state(pieces, cpu_player, cpu_player);
+    seed_search_hash_path_from_history(g_game_rep_history, root_st.hash);
     AllMoves all_moves  = all_moves_for(root_st.pieces, cpu_player);
     if (all_moves.empty()) return {false, {}};
     if (all_moves.size() == 1) return {true, all_moves[0]};
@@ -3959,13 +4506,12 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     int root_visits = 1;
-    std::mutex tree_mutex;
+    EngineMutex tree_mutex;
     const std::string opp_player = opp(cpu_player);
 
     auto evaluate_leaf_value = [&](SelectionPath& sel, int* out_val) -> bool {
         if (!out_val) return false;
         int val = alphabeta(sel.eval_st, ab_depth, -999999, 999999,
-                            (sel.eval_st.turn == cpu_player),
                             cpu_player, (sel.l2_idx >= 0 ? 2 : 1), true, &sel.prev_move, nullptr);
         if (time_up()) return false;
         *out_val = val;
@@ -3973,7 +4519,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     auto apply_leaf_result = [&](const SelectionPath& sel, float leaf_val) -> bool {
-        std::lock_guard<std::mutex> lk(tree_mutex);
+        std::lock_guard<EngineMutex> lk(tree_mutex);
         if (sel.l1_idx < 0 || sel.l1_idx >= (int)children.size()) return false;
         MCTSLevel1Child& l1 = children[sel.l1_idx];
         if (l1.virtual_loss > 0) l1.virtual_loss--;
@@ -3993,7 +4539,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     auto rollback_virtual_loss = [&](const SelectionPath& sel) {
-        std::lock_guard<std::mutex> lk(tree_mutex);
+        std::lock_guard<EngineMutex> lk(tree_mutex);
         if (sel.l1_idx < 0 || sel.l1_idx >= (int)children.size()) return;
         MCTSLevel1Child& l1 = children[sel.l1_idx];
         if (l1.virtual_loss > 0) l1.virtual_loss--;
@@ -4004,7 +4550,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     };
 
     auto select_path = [&](SelectionPath& sel) -> bool {
-        std::lock_guard<std::mutex> lk(tree_mutex);
+        std::lock_guard<EngineMutex> lk(tree_mutex);
         if (children.empty()) return false;
 
         float sqrt_root = std::sqrt((float)std::max(1, root_visits));
@@ -4105,7 +4651,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
             req_idx.reserve(selected.size());
             for (size_t i = 0; i < selected.size(); i++) {
                 if (!ok[i]) continue;
-                build_attack_cache(selected[i].eval_st);
+                ensure_attack_cache(selected[i].eval_st);
                 reqs.push_back(EvalBatchRequest{
                     &selected[i].eval_st.pieces,
                     &cpu_player,
@@ -4143,18 +4689,27 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
         }
     };
 
-    int hw_threads = (int)std::thread::hardware_concurrency();
-    if (hw_threads <= 0) hw_threads = 1;
-    int num_workers = std::max(1, std::min(hw_threads, MCTS_MAX_THREADS));
+    int num_workers = 1;
+#if COMMANDER_ENABLE_THREADS
+    if (!get_engine_config().force_single_thread) {
+        int hw_threads = (int)std::thread::hardware_concurrency();
+        if (hw_threads <= 0) hw_threads = 1;
+        num_workers = std::max(1, std::min(hw_threads, MCTS_MAX_THREADS));
+    }
+#endif
     if (time_limit_secs <= 0.10 || (int)children.size() <= 2) num_workers = 1;
 
     if (num_workers == 1) {
         worker(0);
     } else {
+#if COMMANDER_ENABLE_THREADS
         std::vector<std::thread> threads;
         threads.reserve(num_workers);
         for (int i = 0; i < num_workers; i++) threads.emplace_back(worker, i);
         for (auto& t : threads) if (t.joinable()) t.join();
+#else
+        worker(0);
+#endif
     }
 
     int best_idx = 0;
@@ -4173,8 +4728,6 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     if (best_visits <= 0) return {false, {}};
     return {true, children[best_idx].move};
 }
-
-static bool g_use_mcts = false;   // enabled at Hard difficulty
 
 static bool is_legal_book_move(const SearchState& st, const std::string& cpu_player, const MoveTriple& cand) {
     int idx = find_piece_idx_by_id(st.pieces, cand.pid);
@@ -4277,12 +4830,16 @@ static bool opening_book_pick(const SearchState& st, const std::string& cpu_play
     return false;
 }
 
-static bool g_use_opening_book = true;
-
 static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_player,
                                int max_depth, double time_limit_secs,
                                const std::atomic<bool>* stop_flag = nullptr,
                                ThreadData* td = nullptr) {
+    const EngineConfig& cfg = get_engine_config();
+    if (max_depth <= 0) max_depth = std::max(1, cfg.max_depth);
+    if (time_limit_secs <= 0.0) {
+        time_limit_secs = std::max(0.01, cfg.time_limit_ms / 1000.0);
+    }
+
     struct StopFlagScope {
         const std::atomic<bool>* prev = nullptr;
         explicit StopFlagScope(const std::atomic<bool>* flag) : prev(g_stop_flag) { g_stop_flag = flag; }
@@ -4294,12 +4851,12 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
     auto soft_deadline = std::chrono::steady_clock::now() +
                          std::chrono::milliseconds((int)(time_limit_secs * 550));
     reset_time_state();
-    // Seed search path with game-level repetition history so the engine
-    // avoids moves that create threefold repetition with prior positions.
-    g_search_hash_path = g_game_rep_history;  // may be empty if not in sim
     g_nodes.store(0, std::memory_order_relaxed);
 
     SearchState root = make_search_state(pieces, cpu_player, cpu_player);
+    // Seed search path with game-level repetition history so the engine
+    // avoids moves that create threefold repetition with prior positions.
+    seed_search_hash_path_from_history(g_game_rep_history, root.hash);
     AllMoves all_moves = all_moves_for(root.pieces, cpu_player);
     if (all_moves.empty()) return {false, {}};
     if (all_moves.size() == 1) return {true, all_moves[0]};  // easy move
@@ -4383,15 +4940,15 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
                 int val;
                 if (root_move_idx == 0) {
                     // First move: full window search
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                     cpu_player, 1, true, &m, td);
                 } else {
                     // PVS: zero-window search first
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1,
                                     cpu_player, 1, true, &m, td);
                     // Re-search with full window if it beats alpha but doesn't reach beta
                     if (val > window_alpha && val < window_beta) {
-                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                         cpu_player, 1, true, &m, td);
                     }
                 }
@@ -4457,17 +5014,22 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
 static int g_smp_thread_count = 0; // 0 = auto-detect
 
 static int smp_thread_count() {
+#if !COMMANDER_ENABLE_THREADS
+    return 1;
+#else
+    if (get_engine_config().force_single_thread) return 1;
     if (g_smp_thread_count > 0) return g_smp_thread_count;
     int hw = (int)std::thread::hardware_concurrency();
     if (hw <= 0) hw = 1;
     // Use all available hardware threads by default.
     return std::max(hw, 1);
+#endif
 }
 
 struct SMPShared {
     std::atomic<bool>   stop{false};
     std::atomic<int>    best_score{-999999};
-    std::mutex          best_mutex;
+    EngineMutex         best_mutex;
     MoveTriple          best_move{};
     bool                best_found{false};
     std::chrono::steady_clock::time_point deadline;       // hard limit
@@ -4483,7 +5045,6 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                         int max_depth, SMPShared& shared) {
     init_lmr_table();
     reset_time_state();
-    g_search_hash_path = g_game_rep_history;  // seed with game history
     // Each thread gets its own ThreadData
     ThreadData td;
     td.thread_id = thread_id;
@@ -4493,6 +5054,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
     g_deadline = shared.deadline;
 
     SearchState root = make_search_state(pieces, cpu_player, cpu_player);
+    seed_search_hash_path_from_history(g_game_rep_history, root.hash);
     AllMoves all_moves = all_moves_for(root.pieces, cpu_player);
     if (all_moves.empty()) return;
 
@@ -4583,14 +5145,14 @@ static void smp_worker(int thread_id, const PieceList& pieces,
 
                 int val;
                 if (root_move_idx == 0) {
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                     cpu_player, 1, true, &m, &td);
                 } else {
                     // PVS: zero-window search first
-                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1, false,
+                    val = alphabeta(root, cur_depth-1, window_alpha, window_alpha+1,
                                     cpu_player, 1, true, &m, &td);
                     if (val > window_alpha && val < window_beta) {
-                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta, false,
+                        val = alphabeta(root, cur_depth-1, window_alpha, window_beta,
                                         cpu_player, 1, true, &m, &td);
                     }
                 }
@@ -4640,7 +5202,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
         if (completed) {
             int global_best = shared.best_score.load(std::memory_order_relaxed);
             if (cur_best_val > global_best || !shared.best_found) {
-                std::lock_guard<std::mutex> lk(shared.best_mutex);
+                std::lock_guard<EngineMutex> lk(shared.best_mutex);
                 if (cur_best_val > shared.best_score.load(std::memory_order_relaxed) ||
                     !shared.best_found) {
                     shared.best_score.store(cur_best_val, std::memory_order_relaxed);
@@ -4664,7 +5226,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                     // complex: extend the soft deadline by 25% (capped at hard).
                     // This mirrors Stockfish 18's "bestMoveChanges" time manager.
                     if (cur_depth >= 4) {
-                        std::lock_guard<std::mutex> lk(shared.best_mutex);
+                        std::lock_guard<EngineMutex> lk(shared.best_mutex);
                         auto now = std::chrono::steady_clock::now();
                         auto remaining = shared.deadline - now;
                         auto extension = remaining / 4;  // 25% of remaining time
@@ -4712,6 +5274,7 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
 
     int num_threads = smp_thread_count();
     if (num_threads < 1) num_threads = 1;
+    if (get_engine_config().force_single_thread) num_threads = 1; // WASM-SAFE
 
     // ── Dynamic Time Management ──────────────────────────────────────────
     // soft_limit: ideal time (stop if stable), hard_limit: absolute max
@@ -4726,20 +5289,28 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
                            std::chrono::milliseconds((int)(soft_limit * 1000));
     g_deadline = shared.deadline;
 
-    std::vector<std::thread> threads;
-    threads.reserve(num_threads);
+    auto run_worker = [&](int thread_id) {
+        g_stop_flag = external_stop;
+        g_deadline = shared.deadline;
+        reset_time_state();
+        smp_worker(thread_id, pieces, cpu_player, max_depth, shared);
+    };
 
-    for (int i = 0; i < num_threads; i++) {
-        threads.emplace_back([i, &pieces, &cpu_player, max_depth, &shared, external_stop]() {
-            g_stop_flag = external_stop;
-            g_deadline = shared.deadline;
-            reset_time_state();
-            smp_worker(i, pieces, cpu_player, max_depth, shared);
-        });
-    }
-
-    for (auto& t : threads) {
-        if (t.joinable()) t.join();
+    if (num_threads <= 1) {
+        run_worker(0);
+    } else {
+#if COMMANDER_ENABLE_THREADS
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
+        for (int i = 0; i < num_threads; i++) {
+            threads.emplace_back([&, i]() { run_worker(i); });
+        }
+        for (auto& t : threads) {
+            if (t.joinable()) t.join();
+        }
+#else
+        run_worker(0);
+#endif
     }
 
     if (shared.best_found)
@@ -4747,8 +5318,6 @@ static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cp
 
     return {false, {}};
 }
-
-
 // COORDINATE HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -4797,8 +5366,6 @@ static void load_all_textures(SDL_Renderer* ren) {
         if (ts) g_textures_small[kv.first] = ts;
     }
 }
-
-
 // GAME STATE
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -4844,9 +5411,12 @@ struct Game {
     std::string last_move_player = "red";
     int review_index = -1; // -1 = live board, else index into state_history
 
-    // CPU async
+    // === CHANGED ===
+    // CPU async (WASM-SAFE: synchronous fallback when threads are disabled).
+#if COMMANDER_ENABLE_THREADS
     std::thread cpu_thread;
-    std::mutex cpu_mutex;
+#endif
+    EngineMutex cpu_mutex;
     std::atomic<bool> cpu_stop{false};
     bool cpu_done = false;
     AIResult cpu_result;
@@ -4868,15 +5438,35 @@ struct Game {
 
     void stop_cpu() {
         cpu_stop.store(true, std::memory_order_relaxed);
+#if COMMANDER_ENABLE_THREADS
         if (cpu_thread.joinable()) cpu_thread.join();
+#endif
         cpu_stop.store(false, std::memory_order_relaxed);
     }
 
     void set_difficulty(int d) {
         difficulty = d;
-        if (d==0) { cpu_depth=4; cpu_time_limit=2.5;  g_use_mcts=false; }
-        else if (d==1) { cpu_depth=6; cpu_time_limit=3.0;  g_use_mcts=false; }
-        else { cpu_depth=8; cpu_time_limit=8.0; g_use_mcts=true; }
+        EngineConfig cfg = get_engine_config();
+        if (d==0) {
+            cpu_depth=4; cpu_time_limit=2.5;
+            cfg.use_mcts=false;
+            cfg.max_depth=cpu_depth;
+            cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
+        } else if (d==1) {
+            cpu_depth=6; cpu_time_limit=3.0;
+            cfg.use_mcts=false;
+            cfg.max_depth=cpu_depth;
+            cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
+        } else {
+            cpu_depth=8; cpu_time_limit=8.0;
+            cfg.use_mcts=true;
+            cfg.max_depth=cpu_depth;
+            cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
+        }
+#if !COMMANDER_ENABLE_THREADS
+        cfg.force_single_thread = true;
+#endif
+        set_engine_config(cfg);
     }
 
     void set_game_mode(GameMode mode) {
@@ -5211,7 +5801,7 @@ struct Game {
     void start_cpu_move() {
         stop_cpu();
         {
-            std::lock_guard<std::mutex> lk(cpu_mutex);
+            std::lock_guard<EngineMutex> lk(cpu_mutex);
             cpu_done = false;
         }
         PieceList pieces_copy = pieces;
@@ -5219,7 +5809,7 @@ struct Game {
         int depth = cpu_depth;
         double tlimit = cpu_time_limit;
 
-        cpu_thread = std::thread([this, pieces_copy, cpu_pl, depth, tlimit]() {
+        auto run_cpu_search = [this, pieces_copy, cpu_pl, depth, tlimit]() {
             try {
                 reset_search_tables();
                 g_game_rep_history = position_history;  // let search see game repetition history
@@ -5233,7 +5823,7 @@ struct Game {
                         MoveTriple book_mv{};
                         if (g_use_opening_book && opening_book_pick(root_st, cpu_pl, book_mv)) {
                             if (!cpu_stop.load(std::memory_order_relaxed)) {
-                                std::lock_guard<std::mutex> lk(cpu_mutex);
+                                std::lock_guard<EngineMutex> lk(cpu_mutex);
                                 cpu_result = {true, book_mv};
                                 cpu_done   = true;
                             }
@@ -5245,7 +5835,7 @@ struct Game {
                     double mcts_time = tlimit * 0.70;
                     double verify_time = tlimit * 0.28;
                     res = mcts_ab_root_search(pieces_copy, cpu_pl,
-                                             MCTS_AB_DEPTH, mcts_time, &cpu_stop);
+                                              engine_mcts_ab_depth(), mcts_time, &cpu_stop);
                     // If MCTS found a move, run quick SMP verification
                     if (res.found && !cpu_stop.load(std::memory_order_relaxed)) {
                         // Hint: put MCTS best move into TT so SMP searches it first
@@ -5259,21 +5849,28 @@ struct Game {
                     res = smp_cpu_pick_move(pieces_copy, cpu_pl, depth, tlimit, &cpu_stop);
                 }
                 if (cpu_stop.load(std::memory_order_relaxed)) return;
-                std::lock_guard<std::mutex> lk(cpu_mutex);
+                std::lock_guard<EngineMutex> lk(cpu_mutex);
                 if (cpu_stop.load(std::memory_order_relaxed)) return;
                 cpu_result = res;
                 cpu_done = true;
             } catch (...) {
-                std::lock_guard<std::mutex> lk(cpu_mutex);
+                std::lock_guard<EngineMutex> lk(cpu_mutex);
                 cpu_result = {false, {}};
                 cpu_done = true;
             }
-        });
+        };
+
+#if COMMANDER_ENABLE_THREADS
+        cpu_thread = std::thread(run_cpu_search);
+#else
+        // WASM-SAFE: no detached worker threads in browser runtime.
+        run_cpu_search();
+#endif
     }
 
     void check_cpu_done() {
         if (state != GameState::CPU_THINKING) return;
-        std::lock_guard<std::mutex> lk(cpu_mutex);
+        std::lock_guard<EngineMutex> lk(cpu_mutex);
         if (!cpu_done) return;
         cpu_done = false;
 
