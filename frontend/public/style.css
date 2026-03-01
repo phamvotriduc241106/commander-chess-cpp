@@ -184,8 +184,8 @@ body {
 }
 
 .setup-about {
-  margin: 0 0 12px;
-  max-width: 640px;
+  margin: 0;
+  max-width: none;
   border: 1px solid var(--c-shadow);
   border-radius: 12px;
   background: var(--c-panel-soft);
@@ -213,6 +213,53 @@ body {
 
 .setup-about-toggle {
   width: 100%;
+}
+
+.setup-about-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 31, 35, 0.42);
+  backdrop-filter: blur(3px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  z-index: 185;
+}
+
+.setup-about-modal.show {
+  display: flex;
+}
+
+.setup-about-card {
+  width: min(620px, 100%);
+  background: var(--c-panel);
+  border: 1px solid var(--c-shadow);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(47, 58, 74, 0.24);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.setup-about-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.setup-about-head h3 {
+  margin: 0;
+  font-family: "Orbitron", sans-serif;
+  font-size: 1rem;
+  letter-spacing: 0.06em;
+  color: var(--c-accent);
+}
+
+.setup-about-close {
+  width: auto;
+  min-width: 110px;
 }
 
 .setup-label {

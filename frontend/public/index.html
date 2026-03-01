@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.e1d5dbf52dfa.css" />
+  <link rel="stylesheet" href="/style.d5b01fd0d8dd.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -224,6 +224,22 @@
       </div>
 
       <button id="startModeBtn" class="btn primary setup-start" type="button" hidden>START GAME</button>
+    </div>
+  </section>
+
+  <section id="setupAboutModal" class="setup-about-modal" role="dialog" aria-modal="true" aria-labelledby="setupAboutTitle" aria-hidden="true">
+    <div class="setup-about-card" tabindex="-1">
+      <div class="setup-about-head">
+        <h3 id="setupAboutTitle">About</h3>
+        <button id="setupAboutCloseBtn" class="btn ghost setup-about-close" type="button">CLOSE</button>
+      </div>
+      <section class="setup-about" aria-live="polite">
+        <ul class="about-list setup-about-list">
+          <li><span id="setupAboutNameLabel">My name:</span> Pham Vo Tri Duc</li>
+          <li><span id="setupAboutPositionLabel">Position:</span> <span id="setupAboutPositionValue">Vibe coder</span></li>
+          <li><span id="setupAboutGithubLabel">GitHub:</span> <a id="setupAboutGithubLink" href="https://github.com/phamvotriduc241106" target="_blank" rel="noopener">phamvotriduc241106</a></li>
+        </ul>
+      </section>
     </div>
   </section>
 
@@ -444,6 +460,6 @@
     </div>
   </section>
 
-  <script src="/app.b498640bac4e.js"></script>
+  <script src="/app.6d006bf07e00.js"></script>
 </body>
 </html>

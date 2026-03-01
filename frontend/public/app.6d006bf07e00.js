@@ -821,6 +821,14 @@ const presetQuickStartBtn = document.getElementById('presetQuickStartBtn');
 const presetClassicBtn = document.getElementById('presetClassicBtn');
 const presetCustomBtn = document.getElementById('presetCustomBtn');
 const setupAboutToggleBtn = document.getElementById('setupAboutToggleBtn');
+const setupAboutModalEl = document.getElementById('setupAboutModal');
+const setupAboutCardEl = setupAboutModalEl ? setupAboutModalEl.querySelector('.setup-about-card') : null;
+const setupAboutCloseBtn = document.getElementById('setupAboutCloseBtn');
+const setupAboutTitleEl = document.getElementById('setupAboutTitle');
+const setupAboutNameLabelEl = document.getElementById('setupAboutNameLabel');
+const setupAboutPositionLabelEl = document.getElementById('setupAboutPositionLabel');
+const setupAboutPositionValueEl = document.getElementById('setupAboutPositionValue');
+const setupAboutGithubLabelEl = document.getElementById('setupAboutGithubLabel');
 const setupDetailOptionsEl = document.getElementById('setupDetailOptions');
 const setupRulesToggleBtn = document.getElementById('setupRulesToggleBtn');
 const languageLabelEl = document.getElementById('languageLabel');
@@ -1020,6 +1028,7 @@ let stateHistory = [];
 let reviewIndex = -1; // -1 = live board, otherwise stateHistory index
 
 let lastRulesDocTrigger = null;
+let lastSetupAboutTrigger = null;
 let pendingRulesDocCloseAction = null;
 let pendingTutorialCloseAction = null;
 let tutorialStep = 0;
@@ -4039,12 +4048,25 @@ function updateSetupAboutToggleLabel() {
   setupAboutToggleBtn.textContent = label;
 }
 
-function openSetupAboutWindow() {
-  const aboutUrl = `${window.location.origin}/about.html?lang=${encodeURIComponent(selectedLanguage)}`;
-  const opened = window.open(aboutUrl, '_blank', 'noopener');
-  if (!opened) {
-    window.location.href = aboutUrl;
+function openSetupAboutModal(triggerEl = null) {
+  if (!setupAboutModalEl) return;
+  lastSetupAboutTrigger = triggerEl || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  setupAboutModalEl.classList.add('show');
+  setupAboutModalEl.setAttribute('aria-hidden', 'false');
+  window.setTimeout(() => {
+    if (setupAboutCloseBtn) setupAboutCloseBtn.focus();
+    else if (setupAboutCardEl) setupAboutCardEl.focus();
+  }, 0);
+}
+
+function closeSetupAboutModal() {
+  if (!setupAboutModalEl) return;
+  setupAboutModalEl.classList.remove('show');
+  setupAboutModalEl.setAttribute('aria-hidden', 'true');
+  if (lastSetupAboutTrigger && typeof lastSetupAboutTrigger.focus === 'function') {
+    lastSetupAboutTrigger.focus();
   }
+  lastSetupAboutTrigger = null;
 }
 
 function setSetupDetailsVisible(open) {
@@ -4143,6 +4165,12 @@ function applyLocalizedStaticText() {
   if (setupTitleEl) setupTitleEl.textContent = t('setupTitle');
   if (setupSubEl) setupSubEl.textContent = t('setupSub');
   updateSetupAboutToggleLabel();
+  if (setupAboutTitleEl) setupAboutTitleEl.textContent = t('about');
+  if (setupAboutNameLabelEl) setupAboutNameLabelEl.textContent = t('aboutName');
+  if (setupAboutPositionLabelEl) setupAboutPositionLabelEl.textContent = t('aboutPosition');
+  if (setupAboutPositionValueEl) setupAboutPositionValueEl.textContent = t('aboutPositionValue');
+  if (setupAboutGithubLabelEl) setupAboutGithubLabelEl.textContent = t('aboutGithub');
+  if (setupAboutCloseBtn) setupAboutCloseBtn.textContent = t('rulesDocClose');
   if (presetQuickStartBtn) {
     const quickStrong = presetQuickStartBtn.querySelector('strong');
     const quickSpan = presetQuickStartBtn.querySelector('span');
@@ -4455,6 +4483,7 @@ function openSetupMenu() {
 
 function closeSetupMenu() {
   setSetupRulesMenuOpen(false);
+  closeSetupAboutModal();
   setupOverlayEl.classList.remove('show');
   closeRulesDocModal();
 }
@@ -4696,8 +4725,20 @@ if (setupRulesToggleBtn) {
 }
 
 if (setupAboutToggleBtn) {
-  setupAboutToggleBtn.addEventListener('click', () => {
-    openSetupAboutWindow();
+  setupAboutToggleBtn.addEventListener('click', (ev) => {
+    openSetupAboutModal(ev.currentTarget);
+  });
+}
+
+if (setupAboutCloseBtn) {
+  setupAboutCloseBtn.addEventListener('click', () => {
+    closeSetupAboutModal();
+  });
+}
+
+if (setupAboutModalEl) {
+  setupAboutModalEl.addEventListener('click', (ev) => {
+    if (ev.target === setupAboutModalEl) closeSetupAboutModal();
   });
 }
 
@@ -5175,6 +5216,10 @@ window.addEventListener('pointerdown', unlockAudio, { once: true });
 window.addEventListener('keydown', unlockAudio, { once: true });
 window.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
+  if (setupAboutModalEl && setupAboutModalEl.classList.contains('show')) {
+    closeSetupAboutModal();
+    return;
+  }
   if (tutorialActive) {
     closeTutorial(true);
     return;
