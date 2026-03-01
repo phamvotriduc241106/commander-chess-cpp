@@ -128,7 +128,7 @@ body {
 
 .quick-presets {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin: 0 0 12px;
 }
@@ -176,14 +176,6 @@ body {
 .quick-preset-btn.preset-classic {
   border-color: #ba9156;
   background: linear-gradient(180deg, rgba(186, 145, 86, 0.2), rgba(186, 145, 86, 0.08));
-}
-
-.quick-preset-btn.preset-custom {
-  border-color: var(--c-accent);
-}
-
-.quick-preset-btn.preset-custom.active {
-  box-shadow: inset 0 0 0 1px rgba(47, 58, 74, 0.42);
 }
 
 .setup-detail-options[hidden] {
