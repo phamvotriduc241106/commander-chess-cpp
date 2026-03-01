@@ -32,6 +32,8 @@
   --c-capture: rgba(178, 58, 72, 0.54);
   --c-fx-red: rgba(220, 53, 69, 0.78);
   --c-fx-blue: rgba(59, 130, 246, 0.78);
+  --c-pixel-title: #8f7647;
+  --c-pixel-outline: #2f3a4a;
 }
 
 html[data-theme="dark"] {
@@ -68,6 +70,8 @@ html[data-theme="dark"] {
   --c-capture: rgba(239, 113, 120, 0.52);
   --c-fx-red: rgba(240, 113, 120, 0.75);
   --c-fx-blue: rgba(122, 176, 255, 0.75);
+  --c-pixel-title: #e2b36d;
+  --c-pixel-outline: #121923;
 }
 
 * { box-sizing: border-box; }
@@ -117,6 +121,24 @@ body {
   font-family: "Orbitron", sans-serif;
   font-size: 1.35rem;
   letter-spacing: 0.08em;
+}
+
+.setup-pixel-title {
+  margin: 2px 0 8px !important;
+  font-family: "Press Start 2P", "IBM Plex Mono", monospace !important;
+  font-size: clamp(0.86rem, 2.1vw, 1.14rem) !important;
+  line-height: 1.6;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase;
+  color: var(--c-pixel-title);
+  text-shadow:
+    2px 0 0 var(--c-pixel-outline),
+    -2px 0 0 var(--c-pixel-outline),
+    0 2px 0 var(--c-pixel-outline),
+    0 -2px 0 var(--c-pixel-outline),
+    2px 2px 0 var(--c-pixel-outline),
+    -2px 2px 0 var(--c-pixel-outline),
+    3px 4px 0 rgba(0, 0, 0, 0.2);
 }
 
 .setup-sub {
