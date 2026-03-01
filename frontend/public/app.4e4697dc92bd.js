@@ -68,6 +68,12 @@ const I18N = {
     rulesCarry: 'Carrying: some pieces can transport others (piggyback) to create combined attacks.',
     rulesHero: 'Heroic piece: a piece that checkmates gains bonus movement/capture power.',
     rulesModes: 'Modes: Full Battle (capture Commander), Marine/Air/Land Battle objectives.',
+    rulesSectionOverview: 'Overview & Goal',
+    rulesSectionBattlefield: 'Battlefield (11x12 + terrain)',
+    rulesSectionAllPieces: 'All Pieces',
+    rulesSectionMovementCapture: 'Movement & Capture Rules',
+    rulesSectionSpecialRules: 'Special Rules (Heroic, Transport, etc.)',
+    rulesSectionWinModes: 'Win Conditions & Modes',
     rulesDetailsSummary: 'Detailed Rule Highlights',
     rulesDetail1: 'Two players: RED and BLUE. The core objective is to defeat the opposing Commander.',
     rulesDetail2: 'The board uses coordinate-style movement (vertical/horizontal axes), unlike classic square-check chess notation.',
@@ -96,7 +102,7 @@ const I18N = {
     pieceRuleN: 'N - Navy: moves on navigable sea/river water up to 4, including diagonal; has ship/ground fire roles and can carry formations.',
     pieceRuleHero: 'Hero bonus: heroic pieces get +1 range and diagonal capability; heroic air ignores anti-air interception logic.',
     pieceRuleCarry: 'Cargo examples from engine rules: Tank/Air/Navy can carry commander-personnel; Navy supports mixed force transport combinations.',
-    rulesDocOpenBtn: 'VIEW FULL RULEBOOK',
+    rulesDocOpenBtn: 'VIEW FULL RULEBOOK (DOCX)',
     rulesDocTitle: 'Commander Chess Rulebook',
     rulesDocClose: 'CLOSE',
     rulesDocHint: 'Preview is shown as HTML for browser compatibility. Download DOCX below.',
@@ -329,6 +335,12 @@ const I18N = {
     rulesCarry: 'Chở quân: một số quân có thể chở quân khác (cõng quân) để phối hợp tấn công.',
     rulesHero: 'Quân anh hùng: quân lập công chiếu hết được tăng sức di chuyển và bắt.',
     rulesModes: 'Chế độ: Toàn chiến (bắt Tư lệnh), hoặc mục tiêu Hải chiến/Không chiến/Lục chiến.',
+    rulesSectionOverview: 'Tổng quan & Mục tiêu',
+    rulesSectionBattlefield: 'Chiến trường (11x12 + địa hình)',
+    rulesSectionAllPieces: 'Toàn bộ quân cờ',
+    rulesSectionMovementCapture: 'Luật di chuyển & bắt quân',
+    rulesSectionSpecialRules: 'Luật đặc biệt (Anh hùng, Chở quân, ...)',
+    rulesSectionWinModes: 'Điều kiện thắng & Chế độ',
     rulesDetailsSummary: 'Chi tiết luật chơi',
     rulesDetail1: 'Hai bên chơi: ĐỎ và XANH. Mục tiêu cốt lõi là đánh bại Tư lệnh đối phương.',
     rulesDetail2: 'Bàn cờ dùng hệ trục tọa độ khi di chuyển (dọc/ngang), khác kiểu ô vuông của cờ vua.',
@@ -357,7 +369,7 @@ const I18N = {
     pieceRuleN: 'N - Hải quân: di chuyển trên vùng nước biển/sông hợp lệ tối đa 4 ô, gồm đường chéo; có vai trò hỏa lực hải-địa và chở đội hình.',
     pieceRuleHero: 'Thưởng anh hùng: quân anh hùng được +1 tầm đi và có quyền đi chéo; không quân anh hùng bỏ qua cơ chế chặn/bắn của phòng không.',
     pieceRuleCarry: 'Ví dụ chở quân theo engine: Xe tăng/Không quân/Hải quân có thể chở nhóm người gồm cả Tư lệnh; Hải quân có các tổ hợp chở lực lượng hỗn hợp.',
-    rulesDocOpenBtn: 'XEM TOÀN BỘ LUẬT',
+    rulesDocOpenBtn: 'XEM TOÀN BỘ LUẬT (DOCX)',
     rulesDocTitle: 'Tài liệu Luật Cờ Tư Lệnh',
     rulesDocClose: 'ĐÓNG',
     rulesDocHint: 'Bản xem trong ứng dụng dùng HTML để tương thích trình duyệt. Bạn có thể tải DOCX bên dưới.',
@@ -829,6 +841,13 @@ const sideButtonsEl = document.getElementById('sideButtons');
 const difficultyButtonsEl = document.getElementById('difficultyButtons');
 const rulesTitleEl = document.getElementById('rulesTitle');
 const rulesSourceEl = document.getElementById('rulesSource');
+const rulesAccordionEl = document.getElementById('rulesAccordion');
+const rulesSectionOverviewEl = document.getElementById('rulesSectionOverview');
+const rulesSectionBattlefieldEl = document.getElementById('rulesSectionBattlefield');
+const rulesSectionAllPiecesEl = document.getElementById('rulesSectionAllPieces');
+const rulesSectionMovementCaptureEl = document.getElementById('rulesSectionMovementCapture');
+const rulesSectionSpecialRulesEl = document.getElementById('rulesSectionSpecialRules');
+const rulesSectionWinModesEl = document.getElementById('rulesSectionWinModes');
 const rulesGoalEl = document.getElementById('rulesGoal');
 const rulesBoardEl = document.getElementById('rulesBoard');
 const rulesPiecesEl = document.getElementById('rulesPieces');
@@ -4001,6 +4020,19 @@ function setSetupDetailsVisible(open) {
   }
 }
 
+function initializeRulesAccordion() {
+  if (!rulesAccordionEl) return;
+  const accordionItems = Array.from(rulesAccordionEl.querySelectorAll('.rules-accordion-item'));
+  for (const item of accordionItems) {
+    item.addEventListener('toggle', () => {
+      if (!item.open) return;
+      for (const otherItem of accordionItems) {
+        if (otherItem !== item) otherItem.open = false;
+      }
+    });
+  }
+}
+
 function applySetupPreset({ theme = null, playerMode, mode, difficulty, side, autoStart = false }) {
   if (theme) applyTheme(theme, true);
 
@@ -4079,6 +4111,12 @@ function applyLocalizedStaticText() {
   if (copyOnlineLinkBtn) copyOnlineLinkBtn.textContent = t('onlineCopyLinkBtn');
   if (rulesTitleEl) rulesTitleEl.textContent = t('rulesTitle');
   if (rulesSourceEl) rulesSourceEl.textContent = t('rulesSource');
+  if (rulesSectionOverviewEl) rulesSectionOverviewEl.textContent = t('rulesSectionOverview');
+  if (rulesSectionBattlefieldEl) rulesSectionBattlefieldEl.textContent = t('rulesSectionBattlefield');
+  if (rulesSectionAllPiecesEl) rulesSectionAllPiecesEl.textContent = t('rulesSectionAllPieces');
+  if (rulesSectionMovementCaptureEl) rulesSectionMovementCaptureEl.textContent = t('rulesSectionMovementCapture');
+  if (rulesSectionSpecialRulesEl) rulesSectionSpecialRulesEl.textContent = t('rulesSectionSpecialRules');
+  if (rulesSectionWinModesEl) rulesSectionWinModesEl.textContent = t('rulesSectionWinModes');
   if (rulesGoalEl) rulesGoalEl.textContent = t('rulesGoal');
   if (rulesBoardEl) rulesBoardEl.textContent = t('rulesBoard');
   if (rulesPiecesEl) rulesPiecesEl.textContent = t('rulesPieces');
@@ -5048,6 +5086,7 @@ initializeThemePreference();
 initializeUiPrefs();
 setBoardScale(1, { skipLabelUpdate: true });
 setSetupRulesMenuOpen(false);
+initializeRulesAccordion();
 renderCoords();
 setOnlineStatus('onlineStatusIdle', null, true);
 applyLocalizedStaticText();

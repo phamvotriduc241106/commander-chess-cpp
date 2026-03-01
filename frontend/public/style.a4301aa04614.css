@@ -421,27 +421,59 @@ body {
   font-size: 0.74rem;
 }
 
-.rules-list {
-  margin: 0;
-  padding-left: 18px;
+.rules-accordion {
   display: grid;
-  gap: 5px;
+  gap: 8px;
+}
+
+.rules-accordion-item {
+  border: 1px solid var(--c-shadow);
+  border-radius: 11px;
+  background: var(--c-panel);
+  overflow: hidden;
+}
+
+.rules-accordion-item summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: var(--c-accent);
   font-size: 0.86rem;
+}
+
+.rules-accordion-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.rules-accordion-item summary::after {
+  content: "+";
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 1rem;
   color: var(--c-text-dim);
 }
 
-.rules-details {
-  margin-top: 10px;
-  border: 1px solid var(--c-shadow);
-  border-radius: 10px;
-  background: var(--c-panel);
-  padding: 8px 10px;
+.rules-accordion-item[open] summary {
+  background: rgba(201, 162, 39, 0.08);
 }
 
-.rules-details summary {
-  cursor: pointer;
-  font-weight: 700;
-  color: var(--c-accent);
+.rules-accordion-item[open] summary::after {
+  content: "−";
+}
+
+.rules-accordion-content {
+  border-top: 1px solid var(--c-shadow);
+  padding: 10px 12px;
+}
+
+.rules-line {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--c-text-dim);
 }
 
 .rules-detail-list {
@@ -449,12 +481,38 @@ body {
   padding-left: 18px;
   display: grid;
   gap: 5px;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--c-text-dim);
 }
 
-.rules-piece-list strong {
-  color: var(--c-accent);
+.rules-piece-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.rules-piece-list li {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 8px;
+  align-items: start;
+  font-size: 0.8rem;
+  color: var(--c-text-dim);
+}
+
+.rules-piece-icon {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--c-shadow);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .rules-detail-note {

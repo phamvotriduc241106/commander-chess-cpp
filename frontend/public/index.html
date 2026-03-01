@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.9c79eb3a5094.css" />
+  <link rel="stylesheet" href="/style.a4301aa04614.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -133,51 +133,90 @@
       <section id="rulesPanel" class="rules-panel" aria-live="polite">
         <h3 id="rulesTitle">Rules of Commander Chess</h3>
         <p id="rulesSource" class="rules-source">Based on Commander Chess Rules (revised version).</p>
-        <ul class="rules-list">
-          <li id="rulesGoal">Goal: defeat the opponent's Commander by strategy and tactics.</li>
-          <li id="rulesBoard">Board: 11x12 with sea, river/reef, and land zones.</li>
-          <li id="rulesPieces">Pieces: land, air, and sea forces with different roles and interactions.</li>
-          <li id="rulesMove">Movement/capture: vertical and horizontal by default; some pieces leap, attack diagonally, or strike without occupying.</li>
-          <li id="rulesCarry">Carrying: some pieces can transport others (piggyback) to create combined attacks.</li>
-          <li id="rulesHero">Heroic piece: a piece that checkmates gains bonus movement/capture power.</li>
-          <li id="rulesModes">Modes: Full Battle (capture Commander), Marine/Air/Land Battle objectives.</li>
-        </ul>
-        <details class="rules-details">
-          <summary id="rulesDetailsSummary">Detailed Rule Highlights</summary>
-          <ul class="rules-detail-list">
-            <li id="rulesDetail1">Two players: RED and BLUE. The core objective is to defeat the opposing Commander.</li>
-            <li id="rulesDetail2">The board uses coordinate-style movement (vertical/horizontal axes), unlike classic square-check chess notation.</li>
-            <li id="rulesDetail3">The battlefield is split into domains (sea, river/reef, land), creating different lanes and choke points.</li>
-            <li id="rulesDetail4">Piece families represent modern forces: infantry, artillery, tanks, anti-air, missiles, aircraft, and warships.</li>
-            <li id="rulesDetail5">Capture mechanics are asymmetric: some units capture by occupying, some bombard from range, and some can leap.</li>
-            <li id="rulesDetail6">Certain attacks can be executed while holding position (stand-and-strike behavior in specific cases).</li>
-            <li id="rulesDetail7">Transport/carrying is allowed for some formations, enabling combined movement and multi-layer tactics.</li>
-            <li id="rulesDetail8">Heroic promotions exist: pieces that achieve decisive Commander attack gain stronger movement/capture options.</li>
-            <li id="rulesDetail9">Documented variants include strategy modes (Marine/Air/Land/Raid) and full-force play.</li>
-            <li id="rulesDetail10">Timed formats are described (for example 15 or 30 minutes) with score-based resolution when no objective is completed.</li>
-            <li id="rulesDetail11">A strategy objective can grant bonus points; final result can depend on objective + material score.</li>
-            <li id="rulesDetail12">Move annotation symbols (capture/check/checkmate/etc.) are defined in the full official rulebook.</li>
-          </ul>
-          <p id="rulesDetailNote" class="rules-detail-note">Some tournament variants in the rulebook may differ from this web demo's mode presets.</p>
-        </details>
-        <details class="rules-details">
-          <summary id="rulesPiecesSummary">Pieces & Movement (Detailed)</summary>
-          <ul class="rules-detail-list rules-piece-list">
-            <li id="pieceRuleC"><strong>C - Commander:</strong> orthogonal movement up to 10; cannot move into direct open line against the enemy Commander.</li>
-            <li id="pieceRuleH"><strong>H - Headquarters:</strong> fixed base piece; normally immobile.</li>
-            <li id="pieceRuleIn"><strong>In - Infantry:</strong> 1 orthogonal square on land.</li>
-            <li id="pieceRuleM"><strong>M - Militia:</strong> 1 square, including diagonal on land.</li>
-            <li id="pieceRuleT"><strong>T - Tank:</strong> up to 2 orthogonal on land; can fire at enemy sea targets up to 2 squares without moving to sea.</li>
-            <li id="pieceRuleE"><strong>E - Engineer:</strong> 1 orthogonal on land; can ferry heavy ground fire units.</li>
-            <li id="pieceRuleA"><strong>A - Artillery:</strong> up to 3 orthogonal (hero may add diagonal); river crossing is restricted unless reef lane or engineer-assisted.</li>
-            <li id="pieceRuleAa"><strong>Aa - Anti-Aircraft:</strong> 1 orthogonal on land; creates anti-air defense zone around itself.</li>
-            <li id="pieceRuleMs"><strong>Ms - Missile:</strong> up to 2 orthogonal movement; can strike orthogonal range 1-2 and adjacent diagonal targets (not Navy/sea).</li>
-            <li id="pieceRuleAf"><strong>Af - Air Force:</strong> flying movement up to 4 in 8 directions; non-hero air can be blocked/shot by enemy anti-air coverage.</li>
-            <li id="pieceRuleN"><strong>N - Navy:</strong> moves on navigable sea/river water up to 4, including diagonal; has ship/ground fire roles and can carry formations.</li>
-          </ul>
-          <p id="pieceRuleHero" class="rules-detail-note">Hero bonus: heroic pieces get +1 range and diagonal capability; heroic air ignores anti-air interception logic.</p>
-          <p id="pieceRuleCarry" class="rules-detail-note">Cargo examples from engine rules: Tank/Air/Navy can carry commander-personnel; Navy supports mixed force transport combinations.</p>
-        </details>
+
+        <div id="rulesAccordion" class="rules-accordion">
+          <details class="rules-accordion-item" open>
+            <summary id="rulesSectionOverview">Overview & Goal</summary>
+            <div class="rules-accordion-content">
+              <p id="rulesGoal" class="rules-line">Goal: defeat the opponent's Commander by strategy and tactics.</p>
+              <ul class="rules-detail-list">
+                <li id="rulesDetail1">Two players: RED and BLUE. The core objective is to defeat the opposing Commander.</li>
+                <li id="rulesDetail2">The board uses coordinate-style movement (vertical/horizontal axes), unlike classic square-check chess notation.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="rules-accordion-item">
+            <summary id="rulesSectionBattlefield">Battlefield (11x12 + terrain)</summary>
+            <div class="rules-accordion-content">
+              <p id="rulesBoard" class="rules-line">Board: 11x12 with sea, river/reef, and land zones.</p>
+              <ul class="rules-detail-list">
+                <li id="rulesDetail3">The battlefield is split into domains (sea, river/reef, land), creating different lanes and choke points.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="rules-accordion-item">
+            <summary id="rulesSectionAllPieces">All Pieces</summary>
+            <div class="rules-accordion-content">
+              <p id="rulesPieces" class="rules-line">Pieces: land, air, and sea forces with different roles and interactions.</p>
+              <ul class="rules-piece-list">
+                <li><span class="rules-piece-icon" aria-hidden="true">🎖️</span><span id="pieceRuleC">C - Commander: orthogonal movement up to 10; cannot move into direct open line against the enemy Commander.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🏛️</span><span id="pieceRuleH">H - Headquarters: fixed base piece; normally immobile.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🪖</span><span id="pieceRuleIn">In - Infantry: 1 orthogonal square on land.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🛡️</span><span id="pieceRuleM">M - Militia: 1 square, including diagonal on land.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🚓</span><span id="pieceRuleT">T - Tank: up to 2 orthogonal on land; can fire at enemy sea targets up to 2 squares without moving to sea.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🛠️</span><span id="pieceRuleE">E - Engineer: 1 orthogonal on land; can ferry heavy ground fire units.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🎯</span><span id="pieceRuleA">A - Artillery: up to 3 orthogonal (hero may add diagonal); river crossing is restricted unless reef lane or engineer-assisted.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">📡</span><span id="pieceRuleAa">Aa - Anti-Aircraft: 1 orthogonal on land; creates anti-air defense zone around itself.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🚀</span><span id="pieceRuleMs">Ms - Missile: up to 2 orthogonal movement; can strike orthogonal range 1-2 and adjacent diagonal targets (not Navy/sea).</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">✈️</span><span id="pieceRuleAf">Af - Air Force: flying movement up to 4 in 8 directions; non-hero air can be blocked/shot by enemy anti-air coverage.</span></li>
+                <li><span class="rules-piece-icon" aria-hidden="true">🚢</span><span id="pieceRuleN">N - Navy: moves on navigable sea/river water up to 4, including diagonal; has ship/ground fire roles and can carry formations.</span></li>
+              </ul>
+              <p id="rulesDetail4" class="rules-detail-note">Piece families represent modern forces: infantry, artillery, tanks, anti-air, missiles, aircraft, and warships.</p>
+            </div>
+          </details>
+
+          <details class="rules-accordion-item">
+            <summary id="rulesSectionMovementCapture">Movement & Capture Rules</summary>
+            <div class="rules-accordion-content">
+              <p id="rulesMove" class="rules-line">Movement/capture: vertical and horizontal by default; some pieces leap, attack diagonally, or strike without occupying.</p>
+              <ul class="rules-detail-list">
+                <li id="rulesDetail5">Capture mechanics are asymmetric: some units capture by occupying, some bombard from range, and some can leap.</li>
+                <li id="rulesDetail6">Certain attacks can be executed while holding position (stand-and-strike behavior in specific cases).</li>
+                <li id="rulesDetail12">Move annotation symbols (capture/check/checkmate/etc.) are defined in the full official rulebook.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details class="rules-accordion-item">
+            <summary id="rulesSectionSpecialRules">Special Rules (Heroic, Transport, etc.)</summary>
+            <div class="rules-accordion-content">
+              <p id="rulesCarry" class="rules-line">Carrying: some pieces can transport others (piggyback) to create combined attacks.</p>
+              <p id="rulesHero" class="rules-line">Heroic piece: a piece that checkmates gains bonus movement/capture power.</p>
+              <ul class="rules-detail-list">
+                <li id="rulesDetail7">Transport/carrying is allowed for some formations, enabling combined movement and multi-layer tactics.</li>
+                <li id="rulesDetail8">Heroic promotions exist: pieces that achieve decisive Commander attack gain stronger movement/capture options.</li>
+              </ul>
+              <p id="pieceRuleHero" class="rules-detail-note">Hero bonus: heroic pieces get +1 range and diagonal capability; heroic air ignores anti-air interception logic.</p>
+              <p id="pieceRuleCarry" class="rules-detail-note">Cargo examples from engine rules: Tank/Air/Navy can carry commander-personnel; Navy supports mixed force transport combinations.</p>
+            </div>
+          </details>
+
+          <details class="rules-accordion-item">
+            <summary id="rulesSectionWinModes">Win Conditions & Modes</summary>
+            <div class="rules-accordion-content">
+              <p id="rulesModes" class="rules-line">Modes: Full Battle (capture Commander), Marine/Air/Land Battle objectives.</p>
+              <ul class="rules-detail-list">
+                <li id="rulesDetail9">Documented variants include strategy modes (Marine/Air/Land/Raid) and full-force play.</li>
+                <li id="rulesDetail10">Timed formats are described (for example 15 or 30 minutes) with score-based resolution when no objective is completed.</li>
+                <li id="rulesDetail11">A strategy objective can grant bonus points; final result can depend on objective + material score.</li>
+              </ul>
+              <p id="rulesDetailNote" class="rules-detail-note">Some tournament variants in the rulebook may differ from this web demo's mode presets.</p>
+            </div>
+          </details>
+        </div>
+
         <div class="rules-actions">
           <button id="openRulesDocBtn" class="btn ghost rules-action-btn" type="button">VIEW FULL RULEBOOK (DOCX)</button>
         </div>
@@ -404,6 +443,6 @@
     </div>
   </section>
 
-  <script src="/app.25a28ba59c85.js"></script>
+  <script src="/app.4e4697dc92bd.js"></script>
 </body>
 </html>
