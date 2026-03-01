@@ -127,12 +127,24 @@ const I18N = {
     postGameTitleWins: '{side} Wins',
     postGameTitleDraw: 'Draw',
     postGameResultFallback: 'Game over.',
+    postGameStatsHeading: 'Battle Summary',
+    postGameDuration: 'Duration',
+    postGameTotalMoves: 'Total moves',
+    postGameCaptureMoves: 'Capture moves',
+    postGameAvgMoveTime: 'Avg move time',
+    postGameYouCaptured: 'You captured',
+    postGameNoCaptures: 'No captures',
     mainKicker: 'Tactical Command Interface',
     newGameMenu: 'NEW GAME / MENU',
     quickRestart: 'NEW GAME (SAME SETTINGS)',
     startGame: 'START GAME',
     startingGame: 'STARTING...',
     forceBotMove: 'FORCE BOT MOVE',
+    showHint: 'SHOW BEST MOVE',
+    hintThinking: 'Analyzing best move...',
+    hintSuggested: 'Hint: {from} -> {to}',
+    hintNoMove: 'No legal hint is available for this position.',
+    hintUnavailable: 'Hints are unavailable in cloud mode. Reload to use local engine.',
     flipBoard: 'FLIP BOARD',
     resetBoardView: 'RESET VIEW',
     controlDeck: 'Control Deck',
@@ -420,12 +432,24 @@ const I18N = {
     postGameTitleWins: '{side} chiến thắng',
     postGameTitleDraw: 'Hòa',
     postGameResultFallback: 'Trận đấu đã kết thúc.',
+    postGameStatsHeading: 'Tóm tắt trận đấu',
+    postGameDuration: 'Thời lượng',
+    postGameTotalMoves: 'Tổng số nước',
+    postGameCaptureMoves: 'Nước bắt quân',
+    postGameAvgMoveTime: 'TB mỗi nước',
+    postGameYouCaptured: 'Bạn đã bắt',
+    postGameNoCaptures: 'Chưa bắt được quân nào',
     mainKicker: 'Giao diện chỉ huy chiến thuật',
     newGameMenu: 'VÁN MỚI / MENU',
     quickRestart: 'VÁN MỚI (GIỮ THIẾT LẬP)',
     startGame: 'BẮT ĐẦU',
     startingGame: 'ĐANG BẮT ĐẦU...',
     forceBotMove: 'ÉP BOT ĐI',
+    showHint: 'GỢI Ý NƯỚC TỐT NHẤT',
+    hintThinking: 'Đang phân tích nước tốt nhất...',
+    hintSuggested: 'Gợi ý: {from} -> {to}',
+    hintNoMove: 'Không có nước gợi ý hợp lệ cho thế cờ này.',
+    hintUnavailable: 'Gợi ý không khả dụng ở chế độ cloud. Hãy tải lại để dùng engine cục bộ.',
     flipBoard: 'LẬT BÀN CỜ',
     resetBoardView: 'ĐẶT LẠI GÓC NHÌN',
     controlDeck: 'Bảng điều khiển',
@@ -851,6 +875,7 @@ const xCoordsEl = document.getElementById('xCoords');
 const newBtn = document.getElementById('newBtn');
 const quickRestartBtn = document.getElementById('quickRestartBtn');
 const botBtn = document.getElementById('botBtn');
+const hintBtn = document.getElementById('hintBtn');
 const flipBtn = document.getElementById('flipBtn');
 const sideSelect = document.getElementById('sideSelect');
 const difficultySelect = document.getElementById('difficultySelect');
@@ -1024,6 +1049,7 @@ const postGameModalEl = document.getElementById('postGameModal');
 const postGameCardEl = document.getElementById('postGameCard');
 const postGameTitleEl = document.getElementById('postGameTitle');
 const postGameResultEl = document.getElementById('postGameResult');
+const postGameStatsHeadingEl = document.getElementById('postGameStatsHeading');
 const postGameStatsEl = document.getElementById('postGameStats');
 const postGameShareStatusEl = document.getElementById('postGameShareStatus');
 const postGameRematchBtn = document.getElementById('postGameRematchBtn');
@@ -1035,6 +1061,7 @@ let gameId = null;
 let state = null;
 let selectedPid = null;
 let botThinking = false;
+let hintThinking = false;
 let autoBotTimer = null;
 
 let selectedLanguage = 'en';
@@ -1100,6 +1127,9 @@ let tutorialActive = false;
 let tutorialDrag = null;
 let tutorialFocusCell = null;
 let postGameShownSignature = '';
+let gameStartedAtMs = 0;
+let gameEndedAtMs = 0;
+let hintMove = null;
 let deferredInstallPrompt = null;
 let replayLoading = false;
 
@@ -1283,6 +1313,42 @@ function updateStartModeButton() {
 function updateQuickRestartVisibility() {
   if (!quickRestartBtn) return;
   quickRestartBtn.hidden = !hasStartedGame;
+}
+
+function timestampToMs(value) {
+  if (!value) return 0;
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+  if (typeof value.toMillis === 'function') {
+    const millis = Number(value.toMillis());
+    return Number.isFinite(millis) ? Math.max(0, Math.floor(millis)) : 0;
+  }
+  if (value instanceof Date) return value.getTime();
+  return 0;
+}
+
+function startGameClock(startMs = Date.now()) {
+  const base = Number(startMs);
+  gameStartedAtMs = Number.isFinite(base) && base > 0 ? Math.floor(base) : Date.now();
+  gameEndedAtMs = 0;
+}
+
+function markGameEnded(endMs = Date.now()) {
+  const base = Number(endMs);
+  gameEndedAtMs = Number.isFinite(base) && base > 0 ? Math.floor(base) : Date.now();
+}
+
+function clearHintMove() {
+  hintMove = null;
+}
+
+function formatDurationCompact(ms) {
+  const totalSec = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  const hours = Math.floor(totalSec / 3600);
+  const minutes = Math.floor((totalSec % 3600) / 60);
+  const seconds = totalSec % 60;
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  return `${seconds}s`;
 }
 
 function announceStatusLive() {
@@ -1997,8 +2063,12 @@ function modeDescription(mode) {
 }
 
 function activeDifficulty() {
+  if (isOnlineMultiplayer() && state && state.difficulty && isValidDifficulty(state.difficulty)) {
+    return state.difficulty;
+  }
+  if (isValidDifficulty(selectedDifficulty)) return selectedDifficulty;
   if (state && state.difficulty && isValidDifficulty(state.difficulty)) return state.difficulty;
-  return selectedDifficulty;
+  return 'medium';
 }
 
 function difficultyLabel(difficulty) {
@@ -2887,6 +2957,11 @@ function drawBoard() {
   const markerFrom = reviewing
     ? (reviewIndex > 0 ? moveHistory[reviewIndex - 1]?.from || null : null)
     : lastMoveFrom;
+  const hint = (!reviewing && hintMove && !drawState.game_over) ? normalizeMove(hintMove) : null;
+  const hintPiece = hint ? pieceById(hint.pid, drawState) : null;
+  const hintFrom = hintPiece ? { c: hintPiece.col, r: hintPiece.row } : null;
+  const hintToKey = hint ? key(hint.dc, hint.dr) : '';
+  const hintFromKey = hintFrom ? key(hintFrom.c, hintFrom.r) : '';
   const fx = (!reviewing && uiPrefs.animationsEnabled) ? boardFx : null;
   const fxToKey = fx && fx.to ? key(fx.to.c, fx.to.r) : '';
   const fxFromKey = fx && fx.from ? key(fx.from.c, fx.from.r) : '';
@@ -2942,6 +3017,8 @@ function drawBoard() {
       }
 
       const coordKey = key(c, r);
+      if (hint && coordKey === hintToKey) cell.classList.add('hint-target');
+      if (hint && hintFrom && coordKey === hintFromKey) cell.classList.add('hint-origin');
       const isFxTo = coordKey === fxToKey;
       const isFxFrom = coordKey === fxFromKey;
       if (isFxTo) {
@@ -3008,7 +3085,7 @@ function setStatusTheme() {
   if (isOnlineMultiplayer() && guestMovePending) {
     statusBarEl.classList.add('status-thinking');
     statusTagEl.textContent = t('statusThinkingTag');
-  } else if (!isLocalMultiplayer() && !isOnlineMultiplayer() && (botThinking || state.turn !== humanSide())) {
+  } else if (!isLocalMultiplayer() && !isOnlineMultiplayer() && (botThinking || hintThinking || state.turn !== humanSide())) {
     statusBarEl.classList.add('status-thinking');
     statusTagEl.textContent = t('statusThinkingTag');
   } else {
@@ -3018,6 +3095,7 @@ function setStatusTheme() {
 
 function updateStatus() {
   if (!state) {
+    clearHintMove();
     const sideLabel = isLocalMultiplayer()
       ? t('bothSides')
       : (isOnlineMultiplayer() ? sideCaps(onlineRoleSide()) : sideCaps(selectedSide));
@@ -3062,6 +3140,8 @@ function updateStatus() {
     }
   } else if (isLocalMultiplayer()) {
     statusEl.textContent = t('localTurn', { side: sideCaps(state.turn) });
+  } else if (hintThinking) {
+    statusEl.textContent = t('hintThinking');
   } else if (botThinking || state.turn !== you) {
     statusEl.textContent = t('cpuThinking', { side: sideCaps(state.turn) });
   } else {
@@ -3084,13 +3164,16 @@ function updateStatus() {
   }
 
   const reviewMeta = reviewing ? t('reviewMeta') : '';
+  const hintMeta = (!reviewing && hintMove && !state.game_over)
+    ? ` | ${hintSummaryText(hintMove, state)}`
+    : '';
   metaEl.textContent = t('metaWithGame', {
     mode: modeLabel(activeMode()),
     playerMode: playerModeLabel(selectedPlayerMode, true),
     difficulty: difficultyLabel(difficulty),
     game: gameId ? gameId.slice(0, 8) : '--',
     lastMove: lastMoveTxt,
-    reviewMeta
+    reviewMeta: `${reviewMeta}${hintMeta}`
   });
 
   statYouEl.textContent = isLocalMultiplayer() ? t('bothSides') : sideCaps(you);
@@ -3166,6 +3249,27 @@ function formatDestroyedKindsLine(kindsMap) {
   return entries.map(([kind, count]) => `${pieceStatsLabel(kind)} x${count}`).join('  ·  ');
 }
 
+function formatSquare(sq) {
+  if (!sq || !Number.isFinite(Number(sq.c)) || !Number.isFinite(Number(sq.r))) return '(?)';
+  return `(${Number(sq.c)},${Number(sq.r)})`;
+}
+
+function hintSummaryText(move, srcState = state) {
+  const normalized = normalizeMove(move);
+  if (!normalized || !srcState) return '';
+  const piece = pieceById(normalized.pid, srcState);
+  const from = piece ? { c: piece.col, r: piece.row } : null;
+  return t('hintSuggested', { from: formatSquare(from), to: formatSquare({ c: normalized.dc, r: normalized.dr }) });
+}
+
+function currentGameDurationMs() {
+  if (!(gameStartedAtMs > 0)) return 0;
+  const endMs = (state && state.game_over)
+    ? (gameEndedAtMs > 0 ? gameEndedAtMs : Date.now())
+    : Date.now();
+  return Math.max(0, endMs - gameStartedAtMs);
+}
+
 function clearPostGameShareStatus() {
   if (!postGameShareStatusEl) return;
   postGameShareStatusEl.textContent = '';
@@ -3209,14 +3313,35 @@ function showPostGameModal() {
 
   if (postGameTitleEl) postGameTitleEl.textContent = title;
   if (postGameResultEl) postGameResultEl.textContent = state.result || t('postGameResultFallback');
+  if (postGameStatsHeadingEl) postGameStatsHeadingEl.textContent = t('postGameStatsHeading');
   postGameCardEl.classList.remove('victory', 'defeat', 'draw');
   postGameCardEl.classList.add(tone);
 
   const totals = computeDestroyedByAttacker();
   if (postGameStatsEl) {
-    const redLine = formatDestroyedKindsLine(totals.red);
-    const blueLine = formatDestroyedKindsLine(totals.blue);
+    const redLineRaw = formatDestroyedKindsLine(totals.red);
+    const blueLineRaw = formatDestroyedKindsLine(totals.blue);
+    const redLine = redLineRaw === t('noSelection') ? t('postGameNoCaptures') : redLineRaw;
+    const blueLine = blueLineRaw === t('noSelection') ? t('postGameNoCaptures') : blueLineRaw;
+    const durationMs = currentGameDurationMs();
+    const captureMoves = moveHistory.filter((m) => !!(m && m.capture)).length;
+    const avgMoveMs = moveHistory.length > 0 ? Math.round(durationMs / moveHistory.length) : 0;
+    const yourSide = (!isLocalMultiplayer() && (you === 'red' || you === 'blue')) ? you : '';
+    const yourCapturedMap = yourSide ? totals[yourSide] : null;
+    let yourCapturedLine = t('postGameNoCaptures');
+    if (yourCapturedMap && Object.keys(yourCapturedMap).length > 0) {
+      const yourLineRaw = formatDestroyedKindsLine(yourCapturedMap);
+      yourCapturedLine = yourLineRaw === t('noSelection') ? t('postGameNoCaptures') : yourLineRaw;
+    }
+    if (!yourSide) {
+      yourCapturedLine = `${sideCaps('red')}: ${redLine}  |  ${sideCaps('blue')}: ${blueLine}`;
+    }
     postGameStatsEl.innerHTML =
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${t('postGameDuration')}</div><div class="postgame-stats-line">${formatDurationCompact(durationMs)}</div></div>` +
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${t('postGameTotalMoves')}</div><div class="postgame-stats-line">${moveHistory.length}</div></div>` +
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${t('postGameCaptureMoves')}</div><div class="postgame-stats-line">${captureMoves}</div></div>` +
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${t('postGameAvgMoveTime')}</div><div class="postgame-stats-line">${formatDurationCompact(avgMoveMs)}</div></div>` +
+      `<div class="postgame-stats-row"><div class="postgame-stats-side">${t('postGameYouCaptured')}</div><div class="postgame-stats-line">${yourCapturedLine}</div></div>` +
       `<div class="postgame-stats-row"><div class="postgame-stats-side">${sideCaps('red')}</div><div class="postgame-stats-line">${redLine}</div></div>` +
       `<div class="postgame-stats-row"><div class="postgame-stats-side">${sideCaps('blue')}</div><div class="postgame-stats-line">${blueLine}</div></div>`;
   }
@@ -3232,6 +3357,8 @@ function maybeShowPostGameModal() {
     closePostGameModal();
     return;
   }
+  if (!(gameEndedAtMs > 0)) markGameEnded();
+  clearHintMove();
   const signature = `${stateHash(state)}:${moveHistory.length}`;
   if (postGameShownSignature === signature) return;
   postGameShownSignature = signature;
@@ -3344,6 +3471,9 @@ async function loadReplayFromPayload(payload) {
   hasStartedGame = true;
   postGameShownSignature = '';
   clearBoardFx();
+  clearHintMove();
+  startGameClock();
+  if (state.game_over) markGameEnded();
   closeSetupMenu();
   updateSetupSelectionUI();
   updateQuickRestartVisibility();
@@ -3547,6 +3677,12 @@ async function restoreOnlineStateFromFirestore(matchData = null) {
   selectedPid = null;
   guestMovePending = false;
   hasStartedGame = true;
+  clearHintMove();
+  const startedMs = timestampToMs(matchData && (matchData.updatedAt || matchData.createdAt));
+  startGameClock(startedMs || Date.now());
+  if (state && state.game_over) {
+    markGameEnded(startedMs || Date.now());
+  }
   lastMoveFrom = moveHistory.length > 0 ? moveHistory[moveHistory.length - 1].from || null : null;
   clearBoardFx();
 
@@ -3575,6 +3711,9 @@ async function applyStateSyncFromPeer(payload) {
   stateHistory = [cloneState(state)];
   guestMovePending = false;
   hasStartedGame = true;
+  clearHintMove();
+  startGameClock();
+  if (state && state.game_over) markGameEnded();
   clearBoardFx();
   updateHistoryUI();
   updateStatus();
@@ -3985,6 +4124,9 @@ const cloudGameApi = {
   },
   async bot({ game_id }) {
     return cloudApiPost('/api/bot', { game_id });
+  },
+  async hint() {
+    throw new Error(t('hintUnavailable'));
   }
 };
 
@@ -4028,6 +4170,16 @@ async function createWasmGameApi() {
       const state = await bridge.applyMove(move);
       if (!state || typeof state !== 'object') throw new Error('bot move was rejected');
       return { move, state };
+    },
+    async hint({ difficulty }) {
+      const move = await bridge.getBestMove({
+        timeMs: difficultyTimeMsForBot(difficulty),
+        depth: difficultyDepthForBot(difficulty)
+      });
+      if (!move || typeof move.pid !== 'number' || move.pid < 0) {
+        throw new Error(t('hintNoMove'));
+      }
+      return { move };
     }
   };
 }
@@ -4070,7 +4222,7 @@ function clearAutoBotTimer() {
 function maybeAutoBotTurn() {
   clearAutoBotTimer();
   if (isLocalMultiplayer() || isOnlineMultiplayer()) return;
-  if (!state || !gameId || state.game_over || botThinking) return;
+  if (!state || !gameId || state.game_over || botThinking || hintThinking) return;
   if (reviewIndex >= 0) return;
   if (state.turn === humanSide()) return;
 
@@ -4080,15 +4232,28 @@ function maybeAutoBotTurn() {
 }
 
 function updateBotButtonState() {
-  if (!botBtn) return;
   const disabled = isLocalMultiplayer()
     || isOnlineMultiplayer()
     || !state
     || !gameId
     || state.game_over
     || botThinking
+    || hintThinking
     || reviewIndex >= 0;
-  botBtn.disabled = disabled;
+  if (botBtn) botBtn.disabled = disabled;
+
+  if (hintBtn) {
+    const hintDisabled = isLocalMultiplayer()
+      || isOnlineMultiplayer()
+      || !state
+      || !gameId
+      || state.game_over
+      || botThinking
+      || hintThinking
+      || reviewIndex >= 0
+      || state.turn !== humanSide();
+    hintBtn.disabled = hintDisabled;
+  }
 }
 
 function updateSetupRulesToggleLabel() {
@@ -4341,9 +4506,11 @@ function applyLocalizedStaticText() {
   if (postGameRematchBtn) postGameRematchBtn.textContent = t('postGameRematchBtn');
   if (postGameShareBtn) postGameShareBtn.textContent = t('postGameShareBtn');
   if (postGameCloseBtn) postGameCloseBtn.textContent = t('postGameCloseBtn');
+  if (postGameStatsHeadingEl) postGameStatsHeadingEl.textContent = t('postGameStatsHeading');
   updateStartModeButton();
   updateQuickRestartVisibility();
   if (botBtn) botBtn.textContent = t('forceBotMove');
+  if (hintBtn) hintBtn.textContent = t('showHint');
   if (retryBtn) retryBtn.textContent = t('retryAction');
   setRetryAction(pendingRetryAction);
   updateFlipButtonLabel();
@@ -4557,6 +4724,7 @@ function closeSetupMenu() {
 async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMode) {
   clearAutoBotTimer();
   clearBoardFx();
+  clearHintMove();
   closePostGameModal();
   postGameShownSignature = '';
   botThinking = false;
@@ -4575,6 +4743,7 @@ async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMo
 
   gameId = data.game_id;
   state = data.state;
+  startGameClock();
   hasStartedGame = true;
   if (!isLocalMultiplayer() && !isOnlineMultiplayer() && launchSide === 'blue' && state && state.has_last_move) {
     playSound('cpu');
@@ -4602,6 +4771,7 @@ async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMo
 async function sendMove(pid, dc, dr, options = null) {
   const opts = options && typeof options === 'object' ? options : Object.create(null);
   const skipAutoBot = !!opts.skipAutoBot;
+  clearHintMove();
   const prevState = cloneState(state);
   const api = await ensureGameApi();
   const data = await api.move({
@@ -4630,6 +4800,7 @@ async function requestBot(force) {
   if (!force && state.turn === humanSide()) return;
   if (botThinking) return;
 
+  clearHintMove();
   clearAutoBotTimer();
   playSound('cpu');
   botThinking = true;
@@ -4657,9 +4828,42 @@ async function requestBot(force) {
   maybeAutoBotTurn();
 }
 
+async function requestHint() {
+  if (isLocalMultiplayer() || isOnlineMultiplayer()) return;
+  if (!gameId || !state || state.game_over) return;
+  if (reviewIndex >= 0) return;
+  if (botThinking || hintThinking) return;
+  if (state.turn !== humanSide()) return;
+
+  clearAutoBotTimer();
+  clearHintMove();
+  hintThinking = true;
+  updateStatus();
+
+  try {
+    const api = await ensureGameApi();
+    if (!api || typeof api.hint !== 'function') {
+      throw new Error(t('hintUnavailable'));
+    }
+    const data = await api.hint({ game_id: gameId, difficulty: activeDifficulty() });
+    const best = normalizeMove(data && data.move ? data.move : data);
+    if (!best || !moveIsLegal(best, state)) {
+      throw new Error(t('hintNoMove'));
+    }
+
+    hintMove = best;
+    selectedPid = best.pid;
+    clearRetryAction();
+  } finally {
+    hintThinking = false;
+    updateStatus();
+    drawBoard();
+  }
+}
+
 function onCellClick(ev) {
   if (tutorialActive) return;
-  if (!state || !gameId || state.game_over || botThinking) return;
+  if (!state || !gameId || state.game_over || botThinking || hintThinking) return;
   if (isOnlineMultiplayer() && guestMovePending) return;
   if (reviewIndex >= 0) {
     reviewIndex = -1;
@@ -4978,6 +5182,12 @@ if (difficultyButtonsEl) {
 botBtn.addEventListener('click', () => {
   requestBot(true).catch(err => showError(err, () => requestBot(true)));
 });
+
+if (hintBtn) {
+  hintBtn.addEventListener('click', () => {
+    requestHint().catch(err => showError(err, () => requestHint()));
+  });
+}
 
 if (retryBtn) {
   retryBtn.addEventListener('click', () => {

@@ -1,5 +1,9 @@
 # Commander Chess Backend (Cloud Run)
 
+## Team shorthand
+
+- `full sync`: deploy to the web, then push all current changes to GitHub.
+
 ## Local Docker test
 
 ```bash

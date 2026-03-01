@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.16a5367dd32a.css" />
+  <link rel="stylesheet" href="/style.4c9d317ce1bb.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -349,6 +349,7 @@
           </label>
           <div class="control-actions">
             <button id="botBtn" class="btn ghost">FORCE BOT MOVE</button>
+            <button id="hintBtn" class="btn ghost" type="button">SHOW BEST MOVE</button>
             <button id="flipBtn" class="btn ghost" type="button">FLIP BOARD</button>
           </div>
         </section>
@@ -468,7 +469,7 @@
       <p id="postGameResult" class="postgame-result">Battle complete.</p>
       <div class="postgame-flare" aria-hidden="true"></div>
       <div class="postgame-stats-block">
-        <h4>Units Destroyed By Type</h4>
+        <h4 id="postGameStatsHeading">Battle Summary</h4>
         <div id="postGameStats" class="postgame-stats"></div>
       </div>
       <p id="postGameShareStatus" class="postgame-share-status" aria-live="polite"></p>
@@ -481,6 +482,6 @@
   </section>
 
   <script src="/i18n.auto.js"></script>
-  <script src="/app.42978782a008.js"></script>
+  <script src="/app.de7cb414e7f2.js"></script>
 </body>
 </html>
