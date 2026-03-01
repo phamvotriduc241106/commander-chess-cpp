@@ -946,6 +946,31 @@ body {
   gap: 8px;
 }
 
+.postgame-history-block {
+  display: grid;
+  gap: 8px;
+}
+
+.postgame-history-block h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  color: var(--c-accent);
+}
+
+.postgame-history-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 150px;
+  overflow: auto;
+  display: grid;
+  gap: 4px;
+  color: var(--c-text-dim);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  line-height: 1.24;
+}
+
 .postgame-stats-row {
   display: grid;
   grid-template-columns: 128px 1fr;
@@ -1353,6 +1378,43 @@ body {
   box-shadow: 0 10px 22px rgba(4, 8, 12, 0.36);
   color: #eef6ff;
   animation: tutorial-prompt-in 240ms ease-out;
+}
+
+.ai-thinking-overlay {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(173, 198, 221, 0.45);
+  background: rgba(9, 16, 24, 0.86);
+  color: #eef6ff;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  box-shadow: 0 8px 18px rgba(2, 6, 10, 0.32);
+  pointer-events: none;
+}
+
+.ai-thinking-overlay[hidden] {
+  display: none;
+}
+
+.ai-thinking-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2px solid rgba(214, 232, 249, 0.35);
+  border-top-color: rgba(214, 232, 249, 0.95);
+  animation: ai-thinking-spin 0.75s linear infinite;
+}
+
+@keyframes ai-thinking-spin {
+  to { transform: rotate(360deg); }
 }
 
 .quick-tutorial-overlay p {

@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.4c9d317ce1bb.css" />
+  <link rel="stylesheet" href="/style.b8af04818280.css" />
 </head>
 <body>
   <section id="setupOverlay" class="setup-overlay">
@@ -308,6 +308,10 @@
 
           <div class="board-frame">
             <div id="board" class="board" role="grid" aria-rowcount="12" aria-colcount="11" aria-label="Commander chess board"></div>
+            <div id="aiThinkingOverlay" class="ai-thinking-overlay" hidden>
+              <span class="ai-thinking-spinner" aria-hidden="true"></span>
+              <span id="aiThinkingLabel">AI is thinking...</span>
+            </div>
             <div id="quickTutorialOverlay" class="quick-tutorial-overlay" hidden>
               <p>First battle? Learn the basics in 60 seconds.</p>
               <div class="quick-tutorial-actions">
@@ -350,6 +354,7 @@
           <div class="control-actions">
             <button id="botBtn" class="btn ghost">FORCE BOT MOVE</button>
             <button id="hintBtn" class="btn ghost" type="button">SHOW BEST MOVE</button>
+            <button id="undoBtn" class="btn ghost" type="button">UNDO LAST MOVE</button>
             <button id="flipBtn" class="btn ghost" type="button">FLIP BOARD</button>
           </div>
         </section>
@@ -472,6 +477,10 @@
         <h4 id="postGameStatsHeading">Battle Summary</h4>
         <div id="postGameStats" class="postgame-stats"></div>
       </div>
+      <div class="postgame-history-block">
+        <h4 id="postGameHistoryHeading">Move History</h4>
+        <ol id="postGameHistoryList" class="postgame-history-list"></ol>
+      </div>
       <p id="postGameShareStatus" class="postgame-share-status" aria-live="polite"></p>
       <div class="postgame-actions">
         <button id="postGameRematchBtn" class="btn primary" type="button">REMATCH SAME SETTINGS</button>
@@ -482,6 +491,6 @@
   </section>
 
   <script src="/i18n.auto.js"></script>
-  <script src="/app.b85aea9bb527.js"></script>
+  <script src="/app.fbd0c1855646.js"></script>
 </body>
 </html>

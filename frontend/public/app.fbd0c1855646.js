@@ -134,6 +134,8 @@ const I18N = {
     postGameAvgMoveTime: 'Avg move time',
     postGameYouCaptured: 'You captured',
     postGameNoCaptures: 'No captures',
+    postGameHistoryHeading: 'Move History',
+    postGameHistoryEmpty: 'No moves recorded.',
     mainKicker: 'Tactical Command Interface',
     newGameMenu: 'NEW GAME / MENU',
     quickRestart: 'NEW GAME (SAME SETTINGS)',
@@ -141,6 +143,11 @@ const I18N = {
     startingGame: 'STARTING...',
     forceBotMove: 'FORCE BOT MOVE',
     showHint: 'SHOW BEST MOVE',
+    undoMove: 'UNDO LAST MOVE',
+    undoUnavailable: 'No moves available to undo.',
+    undoWhileThinking: 'Wait for the AI to finish thinking before undo.',
+    aiThinkingOverlay: 'AI is thinking...',
+    aiPreparingOverlay: 'AI preparing move...',
     hintThinking: 'Analyzing best move...',
     hintSuggested: 'Hint: {from} -> {to}',
     hintNoMove: 'No legal hint is available for this position.',
@@ -439,6 +446,8 @@ const I18N = {
     postGameAvgMoveTime: 'TB mỗi nước',
     postGameYouCaptured: 'Bạn đã bắt',
     postGameNoCaptures: 'Chưa bắt được quân nào',
+    postGameHistoryHeading: 'Lịch sử nước đi',
+    postGameHistoryEmpty: 'Chưa có nước đi nào.',
     mainKicker: 'Giao diện chỉ huy chiến thuật',
     newGameMenu: 'VÁN MỚI / MENU',
     quickRestart: 'VÁN MỚI (GIỮ THIẾT LẬP)',
@@ -446,6 +455,11 @@ const I18N = {
     startingGame: 'ĐANG BẮT ĐẦU...',
     forceBotMove: 'ÉP BOT ĐI',
     showHint: 'GỢI Ý NƯỚC TỐT NHẤT',
+    undoMove: 'HOÀN TÁC NƯỚC CUỐI',
+    undoUnavailable: 'Không còn nước đi để hoàn tác.',
+    undoWhileThinking: 'Hãy đợi AI tính xong rồi mới hoàn tác.',
+    aiThinkingOverlay: 'AI đang suy nghĩ...',
+    aiPreparingOverlay: 'AI chuẩn bị đi...',
     hintThinking: 'Đang phân tích nước tốt nhất...',
     hintSuggested: 'Gợi ý: {from} -> {to}',
     hintNoMove: 'Không có nước gợi ý hợp lệ cho thế cờ này.',
@@ -876,6 +890,7 @@ const newBtn = document.getElementById('newBtn');
 const quickRestartBtn = document.getElementById('quickRestartBtn');
 const botBtn = document.getElementById('botBtn');
 const hintBtn = document.getElementById('hintBtn');
+const undoBtn = document.getElementById('undoBtn');
 const flipBtn = document.getElementById('flipBtn');
 const sideSelect = document.getElementById('sideSelect');
 const difficultySelect = document.getElementById('difficultySelect');
@@ -1051,11 +1066,15 @@ const postGameTitleEl = document.getElementById('postGameTitle');
 const postGameResultEl = document.getElementById('postGameResult');
 const postGameStatsHeadingEl = document.getElementById('postGameStatsHeading');
 const postGameStatsEl = document.getElementById('postGameStats');
+const postGameHistoryHeadingEl = document.getElementById('postGameHistoryHeading');
+const postGameHistoryListEl = document.getElementById('postGameHistoryList');
 const postGameShareStatusEl = document.getElementById('postGameShareStatus');
 const postGameRematchBtn = document.getElementById('postGameRematchBtn');
 const postGameShareBtn = document.getElementById('postGameShareBtn');
 const postGameCloseBtn = document.getElementById('postGameCloseBtn');
 const pwaInstallBtn = document.getElementById('pwaInstallBtn');
+const aiThinkingOverlayEl = document.getElementById('aiThinkingOverlay');
+const aiThinkingLabelEl = document.getElementById('aiThinkingLabel');
 
 let gameId = null;
 let state = null;
@@ -1349,6 +1368,97 @@ function formatDurationCompact(ms) {
   if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
   if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
   return `${seconds}s`;
+}
+
+function isSinglePlayerMode() {
+  return !isLocalMultiplayer() && !isOnlineMultiplayer();
+}
+
+function shouldShowAiThinkingOverlay() {
+  if (!aiThinkingOverlayEl || !state || !gameId) return false;
+  if (!isSinglePlayerMode() || state.game_over || reviewIndex >= 0) return false;
+  return botThinking || hintThinking || state.turn !== humanSide();
+}
+
+function updateAiThinkingOverlay() {
+  if (!aiThinkingOverlayEl) return;
+  const visible = shouldShowAiThinkingOverlay();
+  aiThinkingOverlayEl.hidden = !visible;
+  if (!visible || !aiThinkingLabelEl) return;
+  aiThinkingLabelEl.textContent = (botThinking || hintThinking) ? t('aiThinkingOverlay') : t('aiPreparingOverlay');
+}
+
+function undoStepCountForCurrentState() {
+  if (!state || stateHistory.length <= 1) return 0;
+  if (reviewIndex >= 0) return 0;
+  if (isOnlineMultiplayer()) return 0;
+
+  if (isLocalMultiplayer()) return 1;
+
+  const you = humanSide();
+  const totalMoves = moveHistory.length;
+  if (totalMoves <= 0) return 0;
+
+  if (state.game_over) {
+    if (state.last_move_player === you) return 1;
+    return totalMoves >= 2 ? 2 : 1;
+  }
+
+  if (state.turn === you) {
+    return totalMoves >= 2 ? 2 : 1;
+  }
+  return 1;
+}
+
+function canUndoNow() {
+  return undoStepCountForCurrentState() > 0 && !botThinking && !hintThinking;
+}
+
+function applyUndoSteps(steps) {
+  const numeric = Number(steps);
+  if (!Number.isInteger(numeric) || numeric <= 0) return false;
+  if (!state || stateHistory.length <= 1) return false;
+  const targetIndex = stateHistory.length - 1 - numeric;
+  if (targetIndex < 0 || targetIndex >= stateHistory.length) return false;
+
+  const targetState = cloneState(stateHistory[targetIndex]);
+  stateHistory = stateHistory.slice(0, targetIndex + 1);
+  moveHistory = moveHistory.slice(0, targetIndex);
+  state = targetState;
+  reviewIndex = -1;
+  selectedPid = null;
+  lastMoveFrom = moveHistory.length > 0 ? (moveHistory[moveHistory.length - 1].from || null) : null;
+  guestMovePending = false;
+  botThinking = false;
+  hintThinking = false;
+  clearHintMove();
+  clearBoardFx();
+  closePostGameModal();
+  postGameShownSignature = '';
+  gameEndedAtMs = 0;
+  clearRetryAction();
+  updateHistoryUI();
+  updateStatus();
+  drawBoard();
+  maybeAutoBotTurn();
+  return true;
+}
+
+function requestUndo() {
+  if (isOnlineMultiplayer()) {
+    showError(new Error(t('undoUnavailable')));
+    return;
+  }
+  if (botThinking || hintThinking) {
+    showError(new Error(t('undoWhileThinking')));
+    return;
+  }
+  const steps = undoStepCountForCurrentState();
+  if (steps <= 0) {
+    showError(new Error(t('undoUnavailable')));
+    return;
+  }
+  applyUndoSteps(steps);
 }
 
 function announceStatusLive() {
@@ -3114,6 +3224,7 @@ function updateStatus() {
     statSelectionEl.textContent = t('noSelection');
     setStatusTheme();
     updateBotButtonState();
+    updateAiThinkingOverlay();
     announceStatusLive();
     updateQuickTutorialOverlay();
     closePostGameModal();
@@ -3196,6 +3307,7 @@ function updateStatus() {
 
   setStatusTheme();
   updateBotButtonState();
+  updateAiThinkingOverlay();
   announceStatusLive();
   updateQuickTutorialOverlay();
   maybeShowPostGameModal();
@@ -3314,6 +3426,7 @@ function showPostGameModal() {
   if (postGameTitleEl) postGameTitleEl.textContent = title;
   if (postGameResultEl) postGameResultEl.textContent = state.result || t('postGameResultFallback');
   if (postGameStatsHeadingEl) postGameStatsHeadingEl.textContent = t('postGameStatsHeading');
+  if (postGameHistoryHeadingEl) postGameHistoryHeadingEl.textContent = t('postGameHistoryHeading');
   postGameCardEl.classList.remove('victory', 'defeat', 'draw');
   postGameCardEl.classList.add(tone);
 
@@ -3344,6 +3457,21 @@ function showPostGameModal() {
       `<div class="postgame-stats-row"><div class="postgame-stats-side">${t('postGameYouCaptured')}</div><div class="postgame-stats-line">${yourCapturedLine}</div></div>` +
       `<div class="postgame-stats-row"><div class="postgame-stats-side">${sideCaps('red')}</div><div class="postgame-stats-line">${redLine}</div></div>` +
       `<div class="postgame-stats-row"><div class="postgame-stats-side">${sideCaps('blue')}</div><div class="postgame-stats-line">${blueLine}</div></div>`;
+  }
+  if (postGameHistoryListEl) {
+    postGameHistoryListEl.innerHTML = '';
+    if (moveHistory.length === 0) {
+      const li = document.createElement('li');
+      li.textContent = t('postGameHistoryEmpty');
+      postGameHistoryListEl.appendChild(li);
+    } else {
+      const start = Math.max(0, moveHistory.length - 14);
+      for (let i = start; i < moveHistory.length; i++) {
+        const li = document.createElement('li');
+        li.textContent = historyLabel(moveHistory[i], i);
+        postGameHistoryListEl.appendChild(li);
+      }
+    }
   }
 
   clearPostGameShareStatus();
@@ -4254,6 +4382,7 @@ function updateBotButtonState() {
       || state.turn !== humanSide();
     hintBtn.disabled = hintDisabled;
   }
+  if (undoBtn) undoBtn.disabled = !canUndoNow();
 }
 
 function updateSetupRulesToggleLabel() {
@@ -4507,10 +4636,13 @@ function applyLocalizedStaticText() {
   if (postGameShareBtn) postGameShareBtn.textContent = t('postGameShareBtn');
   if (postGameCloseBtn) postGameCloseBtn.textContent = t('postGameCloseBtn');
   if (postGameStatsHeadingEl) postGameStatsHeadingEl.textContent = t('postGameStatsHeading');
+  if (postGameHistoryHeadingEl) postGameHistoryHeadingEl.textContent = t('postGameHistoryHeading');
   updateStartModeButton();
   updateQuickRestartVisibility();
   if (botBtn) botBtn.textContent = t('forceBotMove');
   if (hintBtn) hintBtn.textContent = t('showHint');
+  if (undoBtn) undoBtn.textContent = t('undoMove');
+  if (aiThinkingLabelEl) aiThinkingLabelEl.textContent = t('aiThinkingOverlay');
   if (retryBtn) retryBtn.textContent = t('retryAction');
   setRetryAction(pendingRetryAction);
   updateFlipButtonLabel();
@@ -5186,6 +5318,12 @@ botBtn.addEventListener('click', () => {
 if (hintBtn) {
   hintBtn.addEventListener('click', () => {
     requestHint().catch(err => showError(err, () => requestHint()));
+  });
+}
+
+if (undoBtn) {
+  undoBtn.addEventListener('click', () => {
+    requestUndo();
   });
 }
 
