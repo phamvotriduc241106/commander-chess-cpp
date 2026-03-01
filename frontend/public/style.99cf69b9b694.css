@@ -88,8 +88,8 @@ body {
 .setup-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(28, 31, 35, 0.28);
-  backdrop-filter: blur(4px);
+  background: var(--c-bg);
+  backdrop-filter: none;
   display: none;
   align-items: center;
   justify-content: center;

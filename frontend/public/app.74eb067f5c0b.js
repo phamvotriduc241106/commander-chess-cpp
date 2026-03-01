@@ -4125,7 +4125,7 @@ function applyLocalizedStaticText() {
   if (presetQuickStartBtn) {
     const quickStrong = presetQuickStartBtn.querySelector('strong');
     const quickSpan = presetQuickStartBtn.querySelector('span');
-    if (quickStrong) quickStrong.textContent = selectedLanguage === 'vi' ? '🚀 Vào Nhanh (Người Mới)' : '🚀 Quick Start (Beginner)';
+    if (quickStrong) quickStrong.textContent = selectedLanguage === 'vi' ? 'Vào Nhanh (Người Mới)' : 'Quick Start (Beginner)';
     if (quickSpan) quickSpan.textContent = selectedLanguage === 'vi'
       ? '1 người · Full Battle · Beginner · Xem luật + hướng dẫn · Tự động bắt đầu'
       : 'Single · Full Battle · Beginner · Rulebook intro + tutorial · Auto start';
@@ -4133,7 +4133,7 @@ function applyLocalizedStaticText() {
   if (presetClassicBtn) {
     const classicStrong = presetClassicBtn.querySelector('strong');
     const classicSpan = presetClassicBtn.querySelector('span');
-    if (classicStrong) classicStrong.textContent = selectedLanguage === 'vi' ? '🛠️ Tạo Trận' : '🛠️ Create Match';
+    if (classicStrong) classicStrong.textContent = selectedLanguage === 'vi' ? 'Tạo Trận' : 'Create Match';
     if (classicSpan) classicSpan.textContent = selectedLanguage === 'vi'
       ? 'Mở cửa sổ thiết lập trận (chế độ, phe, độ khó, online).'
       : 'Open full match setup window (mode, side, difficulty, online).';
