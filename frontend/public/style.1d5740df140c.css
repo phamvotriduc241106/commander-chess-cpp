@@ -439,8 +439,8 @@ select,
 
 .setup-card {
   width: auto;
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   padding: 0;
   background: transparent;
   border: 0;
@@ -1294,8 +1294,8 @@ select,
 .postgame-history-list {
   margin: 0;
   padding-left: 18px;
-  max-height: 150px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   display: grid;
   gap: 4px;
   color: var(--c-text-dim);
@@ -1627,16 +1627,18 @@ select,
 
 .layout {
   margin-top: 12px;
-  display: grid;
-  grid-template-columns: minmax(140px, 220px) minmax(420px, 1fr) minmax(140px, 220px);
-  grid-template-areas: "left board right";
+  display: flex;
+  flex-wrap: nowrap;
+  flex-direction: row;
   gap: 12px;
   align-items: start;
-  min-width: 920px;
+  min-width: 980px;
 }
 
 .board-panel {
-  grid-area: board;
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 420px;
   background: var(--c-highlight);
   border: 1px solid var(--c-shadow);
   border-radius: 14px;
@@ -2220,11 +2222,13 @@ html[data-animations="off"] .move-fx-layer {
 }
 
 .side-panel-left {
-  grid-area: left;
+  order: 1;
+  flex: 0 0 clamp(150px, 18vw, 220px);
 }
 
 .side-panel-right {
-  grid-area: right;
+  order: 3;
+  flex: 0 0 clamp(150px, 18vw, 220px);
 }
 
 .card {
@@ -2652,8 +2656,8 @@ html[data-theme="dark"] .field-theme-prominent {
 .history-list {
   margin: 10px 0 0;
   padding-left: 20px;
-  max-height: 220px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   color: var(--c-text-dim);
   display: grid;
   gap: 4px;
@@ -2730,11 +2734,8 @@ html[data-theme="dark"] .field-theme-prominent {
 
 @media (max-width: 1220px) {
   .layout {
-    grid-template-columns: minmax(120px, 190px) minmax(400px, 1fr) minmax(120px, 190px);
-    grid-template-areas: "left board right";
-    min-width: 860px;
+    min-width: 900px;
   }
-  .side-panel { display: flex; }
   .setup-grid-two { grid-template-columns: 1fr; }
   .setup-grid-three { grid-template-columns: 1fr; }
   .setup-grid-language { grid-template-columns: 1fr; }
@@ -2745,16 +2746,15 @@ html[data-theme="dark"] .field-theme-prominent {
 
 @media (max-width: 620px) {
   .layout {
+    display: grid;
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "board"
-      "left"
-      "right";
+    min-width: 0;
   }
   .board-panel,
   .side-panel-left,
   .side-panel-right {
-    grid-column: auto;
+    flex: initial;
+    width: 100%;
   }
   .board-panel { order: 1; }
   .side-panel-left { order: 2; }
