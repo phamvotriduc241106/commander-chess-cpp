@@ -753,6 +753,40 @@ static inline int sq_index(int c, int r) { return r * COLS + c; }
 static inline int sq_col(int sq) { return sq % COLS; }
 static inline int sq_row(int sq) { return sq / COLS; }
 
+static constexpr int DIR_COUNT = 8;
+static constexpr int MAX_RAY_STEPS = 11;
+static constexpr int DIRS[DIR_COUNT][2] = {
+    {0, 1}, {0, -1}, {1, 0}, {-1, 0}, // ortho
+    {1, 1}, {1, -1}, {-1, 1}, {-1, -1} // diag
+};
+static constexpr int ORTHO_DIRS[4] = {0, 1, 2, 3};
+static constexpr int DIAG_DIRS[4] = {4, 5, 6, 7};
+static std::array<std::array<std::array<int16_t, MAX_RAY_STEPS>, DIR_COUNT>, COLS * ROWS> g_ray_sq{};
+static std::array<std::array<uint8_t, DIR_COUNT>, COLS * ROWS> g_ray_len{};
+static bool g_ray_tables_ready = false;
+
+static void init_ray_tables() {
+    if (g_ray_tables_ready) return;
+    for (int r = 0; r < ROWS; r++) {
+        for (int c = 0; c < COLS; c++) {
+            int from = sq_index(c, r);
+            for (int d = 0; d < DIR_COUNT; d++) {
+                int dx = DIRS[d][0], dy = DIRS[d][1];
+                int nc = c + dx, nr = r + dy;
+                int len = 0;
+                while (on_board(nc, nr) && len < MAX_RAY_STEPS) {
+                    g_ray_sq[(std::size_t)from][(std::size_t)d][(std::size_t)len] = (int16_t)sq_index(nc, nr);
+                    len++;
+                    nc += dx;
+                    nr += dy;
+                }
+                g_ray_len[(std::size_t)from][(std::size_t)d] = (uint8_t)len;
+            }
+        }
+    }
+    g_ray_tables_ready = true;
+}
+
 struct BB132 {
     uint64_t w[3]{0,0,0};
 
@@ -887,9 +921,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
 
     int me = player_idx(piece.player);
     int enemy = 1 - me;
-
-    static const int ORTHO[4][2] = {{0,1},{0,-1},{1,0},{-1,0}};
-    static const int DIAG[4][2]  = {{1,1},{1,-1},{-1,1},{-1,-1}};
+    int from_sq = sq_index(col, row);
 
     auto add_sq = [&](int c, int r) {
         if (piece.kind != "C" && is_hq_square(c, r)) return;
@@ -911,20 +943,27 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         const Piece& t = (*ctx.pieces)[pi];
         return can_stack_together(*ctx.pieces, piece, t);
     };
+    auto for_each_ray = [&](int dir, int max_steps, auto&& fn) {
+        int lim = std::min(max_steps, (int)g_ray_len[(std::size_t)from_sq][(std::size_t)dir]);
+        for (int i = 0; i < lim; i++) {
+            int sq = g_ray_sq[(std::size_t)from_sq][(std::size_t)dir][(std::size_t)i];
+            int nc = sq_col(sq), nr = sq_row(sq);
+            if (!fn(nc, nr, i + 1)) break;
+        }
+    };
 
     if (k == "C") {
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr)) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int s) {
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     const Piece& t = (*ctx.pieces)[pi];
                     if (player_idx(t.player) != me && s == 1) add_sq(nc, nr);
-                    break;
+                    return false;
                 }
                 add_sq(nc, nr);
-            }
+                return true;
+            });
         }
 
         int enemy_cmd_sq = ctx.commander_sq[enemy];
@@ -962,46 +1001,44 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
     }
 
     if (k == "N") {
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr) || !is_navigable(nc, nr)) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int) {
+                if (!is_navigable(nc, nr)) return false;
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     const Piece& t = (*ctx.pieces)[pi];
                     if (player_idx(t.player) != me) {
                         add_sq(nc, nr);
-                        break;
+                        return false;
                     }
                     if (can_stack_together(*ctx.pieces, piece, t)) add_sq(nc, nr);
                     // Rule: Navy movement is not blocked by friendly pieces.
-                    continue;
+                    return true;
                 }
                 add_sq(nc, nr);
-            }
+                return true;
+            });
         }
-        for (auto& d : DIAG) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr) || !is_navigable(nc, nr)) break;
+        for (int dir : DIAG_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int) {
+                if (!is_navigable(nc, nr)) return false;
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     const Piece& t = (*ctx.pieces)[pi];
                     if (player_idx(t.player) != me) {
                         add_sq(nc, nr);
-                        break;
+                        return false;
                     }
                     if (can_stack_together(*ctx.pieces, piece, t)) add_sq(nc, nr);
-                    continue;
+                    return true;
                 }
                 add_sq(nc, nr);
-            }
+                return true;
+            });
         }
         // Gunboat fire (ground targets: max 3) and anti-ship missile (enemy Navy: max rng).
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr)) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int s) {
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     const Piece& t = (*ctx.pieces)[pi];
@@ -1012,9 +1049,10 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
                             add_sq(nc, nr);
                         }
                     }
-                    break;
+                    return false;
                 }
-            }
+                return true;
+            });
         }
         return res;
     }
@@ -1090,56 +1128,53 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
                 add_sq(nc, nr);
             }
         }
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= 3; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr)) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, 3, [&](int nc, int nr, int) {
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     if (player_idx((*ctx.pieces)[pi].player) != me && is_sea(nc, nr)) add_sq(nc, nr);
-                    break;
+                    return false;
                 }
-            }
+                return true;
+            });
         }
         return res;
     }
 
     if (k == "Aa") {
         bool eng_carried = is_carried_by_engineer(piece, *ctx.pieces);
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr)) break;
-                if (is_sea(nc, nr)) break;
-                if (crosses_river(row, nr) && !is_reef(col) && !eng_carried) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int) {
+                if (is_sea(nc, nr)) return false;
+                if (crosses_river(row, nr) && !is_reef(col) && !eng_carried) return false;
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     if (player_idx((*ctx.pieces)[pi].player) != me) add_sq(nc, nr);
                     else if (can_stack_at(nc, nr)) add_sq(nc, nr);
-                    break;
+                    return false;
                 }
                 add_sq(nc, nr);
-            }
+                return true;
+            });
         }
         return res;
     }
 
     if (k == "Ms") {
         bool eng_carried = is_carried_by_engineer(piece, *ctx.pieces);
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr)) break;
-                if (is_sea(nc, nr)) break;
-                if (crosses_river(row, nr) && !is_reef(col) && !eng_carried) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int) {
+                if (is_sea(nc, nr)) return false;
+                if (crosses_river(row, nr) && !is_reef(col) && !eng_carried) return false;
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     if (player_idx((*ctx.pieces)[pi].player) != me) add_sq(nc, nr);
                     else if (can_stack_at(nc, nr)) add_sq(nc, nr);
-                    break;
+                    return false;
                 }
                 add_sq(nc, nr);
-            }
+                return true;
+            });
         }
         // Missile fire ring: orthogonal range 2, diagonal range 1 only.
         for (int dc = -2; dc <= 2; dc++) {
@@ -1164,53 +1199,52 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
     }
 
     if (k == "E") {
-        for (auto& d : ORTHO) {
-            int nc = col + d[0], nr = row + d[1];
-            if (!on_board(nc, nr) || is_sea(nc, nr)) continue;
-            int pi = piece_index_at(nc, nr);
-            if (pi >= 0) {
-                if (player_idx((*ctx.pieces)[pi].player) != me) add_sq(nc, nr);
-                else if (can_stack_at(nc, nr)) add_sq(nc, nr);
-            } else {
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, 1, [&](int nc, int nr, int) {
+                if (is_sea(nc, nr)) return false;
+                int pi = piece_index_at(nc, nr);
+                if (pi >= 0) {
+                    if (player_idx((*ctx.pieces)[pi].player) != me) add_sq(nc, nr);
+                    else if (can_stack_at(nc, nr)) add_sq(nc, nr);
+                    return false;
+                }
                 add_sq(nc, nr);
-            }
+                return true;
+            });
         }
         return res;
     }
 
     // Infantry, Militia, Tank.
-    int dirs[8][2] = {{0,1},{0,-1},{1,0},{-1,0},{1,1},{1,-1},{-1,1},{-1,-1}};
     int ndirs = use_diag ? 8 : 4;
     for (int di = 0; di < ndirs; di++) {
-        int dx = dirs[di][0], dy = dirs[di][1];
-        for (int s = 1; s <= rng; s++) {
-            int nc = col + dx * s, nr = row + dy * s;
-            if (!on_board(nc, nr) || is_sea(nc, nr)) break;
+        for_each_ray(di, rng, [&](int nc, int nr, int) {
+            if (is_sea(nc, nr)) return false;
             int pi = piece_index_at(nc, nr);
             if (pi >= 0) {
                 if (player_idx((*ctx.pieces)[pi].player) != me) add_sq(nc, nr);
                 else if (can_stack_at(nc, nr)) add_sq(nc, nr);
-                break;
+                return false;
             }
             add_sq(nc, nr);
-        }
+            return true;
+        });
     }
 
     // Tank sea-capture: Tank can stand still to capture enemy pieces at sea (range up to 2).
     // This is a fire-only action — the Tank does not move onto the sea square.
     if (k == "T") {
-        for (auto& d : ORTHO) {
-            for (int s = 1; s <= rng; s++) {
-                int nc = col + d[0] * s, nr = row + d[1] * s;
-                if (!on_board(nc, nr)) break;
+        for (int dir : ORTHO_DIRS) {
+            for_each_ray(dir, rng, [&](int nc, int nr, int) {
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     if (is_sea(nc, nr) && player_idx((*ctx.pieces)[pi].player) != me)
                         add_sq(nc, nr);
-                    break;
+                    return false;
                 }
                 // If empty land square, continue scanning; if empty sea square, also continue.
-            }
+                return true;
+            });
         }
     }
 
@@ -1652,6 +1686,13 @@ static const int PST_Aa_EG[12][11] = {
 // Based on non-Commander, non-HQ material remaining.
 static const int PHASE_TOTAL = 2 * (100 + 120 + 300*2 + 80*2 + 350*2 + 200*2 + 250 + 500*2 + 450*2);
 
+static inline int phase_from_material_sum(int mat_sum) {
+    int phase = (mat_sum * 256 + PHASE_TOTAL / 2) / PHASE_TOTAL;
+    if (phase > 256) phase = 256;
+    if (phase < 0)   phase = 0;
+    return phase;
+}
+
 static int compute_game_phase(const PieceList& pieces) {
     int mat = 0;
     for (auto& p : pieces) {
@@ -1659,10 +1700,7 @@ static int compute_game_phase(const PieceList& pieces) {
         int v = piece_value_fast(p.kind);
         mat += v;
     }
-    int phase = (mat * 256 + PHASE_TOTAL / 2) / PHASE_TOTAL;
-    if (phase > 256) phase = 256;
-    if (phase < 0)   phase = 0;
-    return phase;
+    return phase_from_material_sum(mat);
 }
 
 // Interpolate between midgame and endgame PST values.
@@ -1687,6 +1725,25 @@ static int get_pst_phased(const std::string& kind, const std::string& player,
 // Legacy wrapper for quick_eval (uses midgame PST as approximation)
 static int get_pst(const std::string& kind, const std::string& player, int col, int row) {
     return get_pst_phased(kind, player, col, row, 160); // ~60% midgame default
+}
+
+static inline int piece_phase_material(const Piece& p) {
+    if (p.kind == "C" || p.kind == "H") return 0;
+    return piece_value_fast(p.kind);
+}
+
+static inline int piece_base_term_mg(const Piece& p) {
+    if (p.kind == "H") return 0;
+    int mat = piece_value_fast(p.kind);
+    if (p.hero) mat = (mat * 3) / 2;
+    return mat + get_pst_phased(p.kind, p.player, p.col, p.row, 256) * 2;
+}
+
+static inline int piece_base_term_eg(const Piece& p) {
+    if (p.kind == "H") return 0;
+    int mat = piece_value_fast(p.kind);
+    if (p.hero) mat = (mat * 3) / 2;
+    return mat + get_pst_phased(p.kind, p.player, p.col, p.row, 0) * 2;
 }
 
 // ── Move application (non-destructive) ────────────────────────────────────
@@ -1869,21 +1926,41 @@ struct SearchState {
     PieceList pieces;
     std::string turn;
     uint64_t hash = 0;
-    int quick_eval = 0; // from CPU perspective
+    int quick_eval = 0; // from CPU perspective (incremental mg/eg blend)
     AttackCache atk;
     // Cached commander positions (indexed by player: 0=red, 1=blue), -1 if captured.
     int cmd_col[2] = {-1, -1};
     int cmd_row[2] = {-1, -1};
     // Cached navy counts per player.
     int navy_count[2] = {0, 0};
+    // Running base eval terms (material + PST) by side.
+    int mg_base_side[2] = {0, 0};
+    int eg_base_side[2] = {0, 0};
+    int phase_material = 0;
+    int phase = 0;
+    int cpu_side = 0;
     // O(1) lookups for hot search paths.
     std::array<int16_t, COLS * ROWS> sq_to_piece_idx{};
     std::array<int16_t, kFastIdMax> id_to_piece_idx{};
+
+    int blended_base_eval_for_side(int side) const {
+        int opp_side = 1 - side;
+        int mg = mg_base_side[side] - mg_base_side[opp_side];
+        int eg = eg_base_side[side] - eg_base_side[opp_side];
+        return (mg * phase + eg * (256 - phase)) / 256;
+    }
+
+    void refresh_quick_eval() {
+        quick_eval = blended_base_eval_for_side(cpu_side);
+    }
 
     void rebuild_caches() {
         cmd_col[0] = cmd_col[1] = -1;
         cmd_row[0] = cmd_row[1] = -1;
         navy_count[0] = navy_count[1] = 0;
+        mg_base_side[0] = mg_base_side[1] = 0;
+        eg_base_side[0] = eg_base_side[1] = 0;
+        phase_material = 0;
         sq_to_piece_idx.fill(-1);
         id_to_piece_idx.fill(-1);
         for (int i = 0; i < (int)pieces.size(); i++) {
@@ -1895,7 +1972,12 @@ struct SearchState {
             int pi = (p.player == "red") ? 0 : 1;
             if (p.kind == "C") { cmd_col[pi] = p.col; cmd_row[pi] = p.row; }
             if (p.kind == "N") navy_count[pi]++;
+            mg_base_side[pi] += piece_base_term_mg(p);
+            eg_base_side[pi] += piece_base_term_eg(p);
+            phase_material += piece_phase_material(p);
         }
+        phase = phase_from_material_sum(phase_material);
+        refresh_quick_eval();
     }
 };
 
@@ -2106,27 +2188,86 @@ static const int TT_EXACT = 0, TT_LOWER = 1, TT_UPPER = 2;
 //   slot 1: always-replace (latest position)
 static const int TT_BUCKET = 2;
 
-// Packed TT entry: 20 bytes (was ~40). More entries per cache line = faster.
-#pragma pack(push, 1)
 struct TTEntry {
-    uint64_t key   = 0;     // 8 bytes: full key
-    int16_t  depth = 0;     // 2 bytes
-    int16_t  val   = 0;     // 2 bytes (clamped ±32000)
-    uint8_t  flag  = 0;     // 1 byte
-    uint8_t  age   = 0;     // 1 byte
-    int16_t  mv_pid = -1;   // 2 bytes: packed move
-    int8_t   mv_dc  = -1;   // 1 byte
-    int8_t   mv_dr  = -1;   // 1 byte  — Total: 20 bytes
+    // Lockless SMP-safe layout using atomics + checksum.
+    // data_lo packs: depth(16), val(16), flag(8), age(8), mv_pid(16)
+    // data_hi packs: mv_dc(8), mv_dr(8)
+    std::atomic<uint64_t> key{0};
+    std::atomic<uint64_t> data_lo{0};
+    std::atomic<uint64_t> data_hi{0};
+    std::atomic<uint64_t> checksum{0};
 };
-#pragma pack(pop)
 
-static inline MoveTriple tt_unpack_move(const TTEntry& e) {
+struct TTDecoded {
+    uint64_t key = 0;
+    int16_t  depth = 0;
+    int16_t  val = 0;
+    uint8_t  flag = 0;
+    uint8_t  age = 0;
+    int16_t  mv_pid = -1;
+    int8_t   mv_dc = -1;
+    int8_t   mv_dr = -1;
+};
+
+static inline MoveTriple tt_unpack_move(const TTDecoded& e) {
     return {(int)e.mv_pid, (int)e.mv_dc, (int)e.mv_dr};
 }
-static inline void tt_pack_move(TTEntry& e, const MoveTriple& m) {
-    e.mv_pid = (int16_t)m.pid;
-    e.mv_dc  = (int8_t)m.dc;
-    e.mv_dr  = (int8_t)m.dr;
+
+static inline uint64_t tt_pack_data_lo(int depth, int flag, int val, uint8_t age, const MoveTriple& m) {
+    uint64_t d = 0;
+    d |= (uint64_t)(uint16_t)std::min(depth, (int)INT16_MAX);
+    d |= (uint64_t)(uint16_t)std::max(-32000, std::min(32000, val)) << 16;
+    d |= (uint64_t)(uint8_t)flag << 32;
+    d |= (uint64_t)age << 40;
+    d |= (uint64_t)(uint16_t)(int16_t)m.pid << 48;
+    return d;
+}
+
+static inline uint64_t tt_pack_data_hi(const MoveTriple& m) {
+    uint16_t packed = (uint16_t)((uint8_t)m.dc) | (uint16_t)((uint8_t)m.dr) << 8;
+    return (uint64_t)packed;
+}
+
+static inline uint64_t tt_checksum_of(uint64_t key, uint64_t lo, uint64_t hi) {
+    return key ^ lo ^ (hi * 0x9E3779B97F4A7C15ULL);
+}
+
+static inline void tt_decode(TTDecoded& out, uint64_t key, uint64_t lo, uint64_t hi) {
+    out.key   = key;
+    out.depth = (int16_t)(lo & 0xFFFFu);
+    out.val   = (int16_t)((lo >> 16) & 0xFFFFu);
+    out.flag  = (uint8_t)((lo >> 32) & 0xFFu);
+    out.age   = (uint8_t)((lo >> 40) & 0xFFu);
+    out.mv_pid = (int16_t)((lo >> 48) & 0xFFFFu);
+    uint16_t p = (uint16_t)(hi & 0xFFFFu);
+    out.mv_dc = (int8_t)(p & 0xFFu);
+    out.mv_dr = (int8_t)((p >> 8) & 0xFFu);
+}
+
+static inline bool tt_read_slot(const TTEntry& e, TTDecoded& out) {
+    uint64_t k1 = e.key.load(std::memory_order_acquire);
+    if (k1 == 0) return false;
+    uint64_t lo = e.data_lo.load(std::memory_order_relaxed);
+    uint64_t hi = e.data_hi.load(std::memory_order_relaxed);
+    uint64_t cs = e.checksum.load(std::memory_order_acquire);
+    uint64_t k2 = e.key.load(std::memory_order_acquire);
+    if (k1 != k2) return false;
+    if (tt_checksum_of(k1, lo, hi) != cs) return false;
+    tt_decode(out, k1, lo, hi);
+    return true;
+}
+
+static inline void tt_write_slot(TTEntry& e, uint64_t key, int depth, int flag, int val, const MoveTriple& best, uint8_t age) {
+    uint64_t lo = tt_pack_data_lo(depth, flag, val, age, best);
+    uint64_t hi = tt_pack_data_hi(best);
+    uint64_t cs = tt_checksum_of(key, lo, hi);
+    // Publish payload before key/checksum; probes reject torn reads.
+    e.key.store(0, std::memory_order_relaxed);
+    e.checksum.store(0, std::memory_order_relaxed);
+    e.data_lo.store(lo, std::memory_order_relaxed);
+    e.data_hi.store(hi, std::memory_order_relaxed);
+    e.checksum.store(cs, std::memory_order_release);
+    e.key.store(key, std::memory_order_release);
 }
 
 struct TTCluster { TTEntry e[TT_BUCKET]; };
@@ -2185,21 +2326,6 @@ static uint8_t   g_tt_age   = 0;
 static void*     g_tt_arena = nullptr;
 static size_t    g_tt_arena_bytes = 0;
 static constexpr std::align_val_t TT_ARENA_ALIGN = std::align_val_t(64);
-// Thread-safe TT striping for SMP probe/store.
-static constexpr size_t TT_LOCK_STRIPES = 1024; // power-of-two
-static std::array<EngineMutex, TT_LOCK_STRIPES> g_tt_locks;
-
-static inline bool tt_locking_enabled() {
-#if COMMANDER_ENABLE_THREADS
-    return !get_engine_config().force_single_thread;
-#else
-    return false;
-#endif
-}
-
-static inline EngineMutex& tt_lock_for_hash(uint64_t h) {
-    return g_tt_locks[h & (TT_LOCK_STRIPES - 1)];
-}
 
 static void tt_arena_release() {
     if (!g_tt_arena) return;
@@ -2322,6 +2448,7 @@ static uint64_t splitmix64_next(uint64_t& x) {
 
 static void init_zobrist() {
     uint64_t seed = 0xC0FFEE1234567890ULL;
+    init_ray_tables();
     for (int st = 0; st < ZK_STATES; st++)
         for (int sq = 0; sq < ZK_SQUARES; sq++)
             g_ZK_piece_sq[st][sq] = splitmix64_next(seed);
@@ -2356,8 +2483,8 @@ static SearchState make_search_state(const PieceList& pieces, const std::string&
     SearchState st;
     st.pieces = pieces;
     st.turn = turn;
+    st.cpu_side = (cpu_player == "red") ? 0 : 1;
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
-    st.quick_eval = quick_eval_cpu(st.pieces, cpu_player);
     st.atk.valid = false;
     st.rebuild_caches();
     return st;
@@ -2406,7 +2533,6 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
     if (!apply_move_unchecked_inplace(st.pieces, m.pid, m.dc, m.dr, st.turn)) return false;
     st.turn = opp(st.turn);
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
-    st.quick_eval = quick_eval_cpu(st.pieces, cpu_player);
     st.atk.valid = false;
     st.rebuild_caches();
     debug_validate_state_or_abort(st.pieces, u.turn_before, "make_move_inplace");
@@ -2558,66 +2684,45 @@ static void reset_search_tables() {
 }
 
 // ── TT probe / store ──────────────────────────────────────────────────────
-static const TTEntry* tt_probe(uint64_t h) {
+static const TTDecoded* tt_probe(uint64_t h) {
     if (!g_TT) return nullptr;
-    auto probe_impl = [&]() -> const TTEntry* {
-        const TTCluster& c = g_TT[h & g_tt_mask];
-        const TTEntry* dp = &c.e[0];
-        const TTEntry* ar = &c.e[1];
-        bool dp_hit = (dp->key == h);
-        bool ar_hit = (ar->key == h);
-        if (dp_hit && ar_hit) {
-            // Prefer same-generation entry, then deeper
-            bool dp_current = (dp->age == g_tt_age);
-            bool ar_current = (ar->age == g_tt_age);
-            if (dp_current != ar_current) return dp_current ? dp : ar;
-            return (dp->depth >= ar->depth) ? dp : ar;
-        }
-        if (dp_hit) return dp;
-        if (ar_hit) return ar;
-        return nullptr;
-    };
-    if (tt_locking_enabled()) {
-        std::lock_guard<EngineMutex> lk(tt_lock_for_hash(h));
-        return probe_impl();
+    const TTCluster& c = g_TT[h & g_tt_mask];
+    TTDecoded d0{}, d1{};
+    bool h0 = tt_read_slot(c.e[0], d0) && d0.key == h;
+    bool h1 = tt_read_slot(c.e[1], d1) && d1.key == h;
+    if (!h0 && !h1) return nullptr;
+    static thread_local TTDecoded out{};
+    if (h0 && h1) {
+        bool d0_current = (d0.age == g_tt_age);
+        bool d1_current = (d1.age == g_tt_age);
+        if (d0_current != d1_current) out = d0_current ? d0 : d1;
+        else out = (d0.depth >= d1.depth) ? d0 : d1;
+        return &out;
     }
-    return probe_impl();
+    out = h0 ? d0 : d1;
+    return &out;
 }
 
 static void tt_store(uint64_t h, int depth, int flag, int val, MoveTriple best) {
     if (!g_TT) return;
-    auto store_impl = [&]() {
-        TTCluster& c = g_TT[h & g_tt_mask];
-        auto write_entry = [&](TTEntry& e) {
-            // Write key last so probes either see old entry or a mostly-complete new entry.
-            e.key   = 0;
-            e.depth = (int16_t)std::min(depth, (int)INT16_MAX);
-            e.flag  = (uint8_t)flag;
-            e.val   = (int16_t)std::max(-32000, std::min(32000, val));
-            e.age   = g_tt_age;
-            tt_pack_move(e, best);
-            e.key   = h;
-        };
+    TTCluster& c = g_TT[h & g_tt_mask];
 
-        // Slot 0: depth-preferred, but prefer overwriting stale entries.
-        TTEntry& depth_slot = c.e[0];
-        bool slot0_stale = (depth_slot.age != g_tt_age);
-        if (depth_slot.key == h) {
-            if (depth >= depth_slot.depth || flag == TT_EXACT) write_entry(depth_slot);
-        } else if (depth_slot.key == 0 || slot0_stale || depth >= depth_slot.depth) {
-            write_entry(depth_slot);
+    TTDecoded d0{};
+    bool slot0_valid = tt_read_slot(c.e[0], d0);
+    bool slot0_same = slot0_valid && d0.key == h;
+    bool slot0_stale = (!slot0_valid) || (d0.age != g_tt_age);
+
+    // Slot 0: depth preferred, or stale/empty replacement.
+    if (slot0_same) {
+        if (depth >= d0.depth || flag == TT_EXACT) {
+            tt_write_slot(c.e[0], h, depth, flag, val, best, g_tt_age);
         }
-
-        // Slot 1: always replace.
-        TTEntry& always_slot = c.e[1];
-        write_entry(always_slot);
-    };
-    if (tt_locking_enabled()) {
-        std::lock_guard<EngineMutex> lk(tt_lock_for_hash(h));
-        store_impl();
-        return;
+    } else if (!slot0_valid || slot0_stale || depth >= d0.depth) {
+        tt_write_slot(c.e[0], h, depth, flag, val, best, g_tt_age);
     }
-    store_impl();
+
+    // Slot 1: always replace.
+    tt_write_slot(c.e[1], h, depth, flag, val, best, g_tt_age);
 }
 
 static void store_killer(const MoveTriple& m, int ply) {
@@ -2929,6 +3034,111 @@ static int see(const PieceList& pieces, int col, int row,
 }
 
 // ── Move ordering ──────────────────────────────────────────────────────────
+static int score_move_for_order(const MoveTriple& m,
+                                const PieceList& pieces,
+                                const std::string& player,
+                                int ply,
+                                const MoveTriple* hash_move,
+                                const MoveTriple* pv_move,
+                                const MoveTriple* prev_move,
+                                const MoveTriple* counter_move,
+                                int hist_pl,
+                                ThreadData* td) {
+    const Piece* piece = nullptr;
+    for (auto& p : pieces) if (p.id==m.pid) { piece=&p; break; }
+    if (!piece) return -1000000;
+    const Piece* target = piece_at_c(pieces, m.dc, m.dr);
+
+    int score = 0;
+    // 1. Hash move — search first always
+    if (hash_move && same_move(*hash_move, m)) {
+        score = 3000000;
+    }
+    // 1b. PV move from previous iteration
+    else if (pv_move && same_move(*pv_move, m)) {
+        score = 2500000;
+    }
+    // 2. Captures — scored by SEE (winning captures first, losing last)
+    else if (target && target->player != player) {
+        int victim_val = piece_value_fast(target->kind);
+        int attacker_val = std::max(1, piece_value_fast(piece->kind));
+        int mvv_lva = victim_val * 16 - attacker_val;
+        int see_val = see(pieces, m.dc, m.dr, player);
+        if (see_val >= 0)
+            score = 1100000 + mvv_lva * 4 + see_val;   // winning / equal capture
+        else
+            score = 520000  + mvv_lva * 2 + see_val;   // losing capture (still above quiets)
+    }
+    // 2b. Counter move for previous move context
+    else if (counter_move && same_move(*counter_move, m))
+        score = 95000;
+    // 3. Killer moves
+    else if (ply<MAX_PLY && (td ? td->killers_set[ply][0] : g_killers_set[ply][0]) &&
+               (td ? td->killers[ply][0] : g_killers[ply][0]).pid==m.pid &&
+               (td ? td->killers[ply][0] : g_killers[ply][0]).dc==m.dc &&
+               (td ? td->killers[ply][0] : g_killers[ply][0]).dr==m.dr)
+        score = 90000;
+    else if (ply<MAX_PLY && (td ? td->killers_set[ply][1] : g_killers_set[ply][1]) &&
+               (td ? td->killers[ply][1] : g_killers[ply][1]).pid==m.pid &&
+               (td ? td->killers[ply][1] : g_killers[ply][1]).dc==m.dc &&
+               (td ? td->killers[ply][1] : g_killers[ply][1]).dr==m.dr)
+        score = 89000;
+    // 4. History heuristic for quiet moves
+    else {
+        int ki = kind_index(piece->kind);
+        score = td ? td_history_score(*td, hist_pl, ki, m.dc, m.dr)
+                   : history_score(hist_pl, ki, m.dc, m.dr);
+        score += td ? td_cont_history_score(*td, prev_move, ki, m.dc, m.dr)
+                    : cont_history_score(prev_move, ki, m.dc, m.dr);
+    }
+    return score;
+}
+
+struct MovePicker {
+    struct ScoredMove {
+        int score = -1000000;
+        MoveTriple move{};
+    };
+
+    std::vector<ScoredMove> scored;
+    std::size_t next_idx = 0;
+
+    MovePicker(const AllMoves& moves, const PieceList& pieces,
+               const std::string& player, int ply,
+               const MoveTriple* hash_move,
+               const MoveTriple* pv_move,
+               const MoveTriple* prev_move,
+               ThreadData* td) {
+        scored.reserve(moves.size());
+        const MoveTriple* counter_move = nullptr;
+        if (prev_move && on_board(prev_move->dc, prev_move->dr)) {
+            bool cs = td ? td->counter_set[prev_move->dc][prev_move->dr]
+                         : g_counter_set[prev_move->dc][prev_move->dr];
+            if (cs) counter_move = td ? &td->counter[prev_move->dc][prev_move->dr]
+                                      : &g_counter[prev_move->dc][prev_move->dr];
+        }
+        int hist_pl = player_idx(player);
+        if (hist_pl < 0) hist_pl = 0;
+        for (const auto& m : moves) {
+            int sc = score_move_for_order(m, pieces, player, ply, hash_move, pv_move,
+                                          prev_move, counter_move, hist_pl, td);
+            scored.push_back({sc, m});
+        }
+    }
+
+    bool next(MoveTriple& out) {
+        if (next_idx >= scored.size()) return false;
+        std::size_t best = next_idx;
+        for (std::size_t i = next_idx + 1; i < scored.size(); i++) {
+            if (scored[i].score > scored[best].score) best = i;
+        }
+        if (best != next_idx) std::swap(scored[best], scored[next_idx]);
+        out = scored[next_idx].move;
+        next_idx++;
+        return true;
+    }
+};
+
 static AllMoves order_moves(const AllMoves& moves, const PieceList& pieces,
                              const std::string& player, int ply,
                              const MoveTriple* hash_move,
@@ -2940,61 +3150,15 @@ static AllMoves order_moves(const AllMoves& moves, const PieceList& pieces,
     const MoveTriple* counter_move = nullptr;
     if (prev_move && on_board(prev_move->dc, prev_move->dr)) {
         bool cs = td ? td->counter_set[prev_move->dc][prev_move->dr]
-                      : g_counter_set[prev_move->dc][prev_move->dr];
+                     : g_counter_set[prev_move->dc][prev_move->dr];
         if (cs) counter_move = td ? &td->counter[prev_move->dc][prev_move->dr]
                                    : &g_counter[prev_move->dc][prev_move->dr];
     }
     int hist_pl = player_idx(player);
     if (hist_pl < 0) hist_pl = 0;
     for (auto& m : moves) {
-        const Piece* piece = nullptr;
-        for (auto& p : pieces) if (p.id==m.pid) { piece=&p; break; }
-        if (!piece) continue;
-        const Piece* target = piece_at_c(pieces, m.dc, m.dr);
-
-        int score = 0;
-        // 1. Hash move — search first always
-        if (hash_move && same_move(*hash_move, m)) {
-            score = 3000000;
-        }
-        // 1b. PV move from previous iteration
-        else if (pv_move && same_move(*pv_move, m)) {
-            score = 2500000;
-        }
-        // 2. Captures — scored by SEE (winning captures first, losing last)
-        else if (target && target->player != player) {
-            int victim_val = piece_value_fast(target->kind);
-            int attacker_val = std::max(1, piece_value_fast(piece->kind));
-            int mvv_lva = victim_val * 16 - attacker_val;
-            int see_val = see(pieces, m.dc, m.dr, player);
-            if (see_val >= 0)
-                score = 1100000 + mvv_lva * 4 + see_val;   // winning / equal capture
-            else
-                score = 520000  + mvv_lva * 2 + see_val;   // losing capture (still above quiets)
-        }
-        // 2b. Counter move for previous move context
-        else if (counter_move && same_move(*counter_move, m))
-            score = 95000;
-        // 3. Killer moves
-        else if (ply<MAX_PLY && (td ? td->killers_set[ply][0] : g_killers_set[ply][0]) &&
-                   (td ? td->killers[ply][0] : g_killers[ply][0]).pid==m.pid &&
-                   (td ? td->killers[ply][0] : g_killers[ply][0]).dc==m.dc &&
-                   (td ? td->killers[ply][0] : g_killers[ply][0]).dr==m.dr)
-            score = 90000;
-        else if (ply<MAX_PLY && (td ? td->killers_set[ply][1] : g_killers_set[ply][1]) &&
-                   (td ? td->killers[ply][1] : g_killers[ply][1]).pid==m.pid &&
-                   (td ? td->killers[ply][1] : g_killers[ply][1]).dc==m.dc &&
-                   (td ? td->killers[ply][1] : g_killers[ply][1]).dr==m.dr)
-            score = 89000;
-        // 4. History heuristic for quiet moves
-        else {
-            int ki = kind_index(piece->kind);
-            score = td ? td_history_score(*td, hist_pl, ki, m.dc, m.dr)
-                       : history_score(hist_pl, ki, m.dc, m.dr);
-            score += td ? td_cont_history_score(*td, prev_move, ki, m.dc, m.dr)
-                        : cont_history_score(prev_move, ki, m.dc, m.dr);
-        }
-
+        int score = score_move_for_order(m, pieces, player, ply, hash_move, pv_move,
+                                         prev_move, counter_move, hist_pl, td);
         scored.push_back({score, m});
     }
     std::sort(scored.begin(), scored.end(), [](auto& a, auto& b){ return a.first > b.first; });
@@ -3364,9 +3528,11 @@ static int advanced_threat_eval(const PieceList& pieces, const std::string& pers
 
 static int board_score_cpu_impl(const PieceList& pieces, const std::string& perspective,
                                 const AttackCache* cache = nullptr,
-                                const std::string* side_to_move = nullptr) {
+                                const std::string* side_to_move = nullptr,
+                                const SearchState* eval_state = nullptr) {
     // ── Game Phase ───────────────────────────────────────────────────────
-    int phase = compute_game_phase(pieces);
+    int phase = eval_state ? eval_state->phase : compute_game_phase(pieces);
+    const bool use_precomputed_base = (eval_state != nullptr);
 
     // ── Constants (some phase-interpolated) ──────────────────────────────
     int THREAT_BONUS       = 350;     // was 260: stronger incentive to threaten commander
@@ -3377,6 +3543,10 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
     int CONTEMPT_BONUS     = 35;       // was 12: strongly prefer playing on over draws
 
     int score = 0;
+    if (use_precomputed_base) {
+        int pi = (perspective == "red") ? 0 : 1;
+        score += eval_state->blended_base_eval_for_side(pi);
+    }
 
     // ── Piece counts for strategic assessment ────────────────────────────
     int my_navy = 0, opp_navy = 0;
@@ -3411,12 +3581,16 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         bool mine = (p.player == perspective);
         int sign = mine ? 1 : -1;
 
-        // Material
-        int mat = piece_value_fast(p.kind);
-        if (p.hero) mat = (mat * 3) / 2;  // heroes are 50% more valuable
+        int mat = 0;
+        int pst = 0;
+        if (!use_precomputed_base) {
+            // Material
+            mat = piece_value_fast(p.kind);
+            if (p.hero) mat = (mat * 3) / 2;  // heroes are 50% more valuable
 
-        // Phase-interpolated PST
-        int pst = get_pst_phased(p.kind, p.player, p.col, p.row, phase);
+            // Phase-interpolated PST
+            pst = get_pst_phased(p.kind, p.player, p.col, p.row, phase);
+        }
 
         // Threat bonus: piece can capture enemy Commander
         int threat = 0;
@@ -3681,7 +3855,9 @@ static std::vector<int> board_score_batch(const std::vector<EvalBatchRequest>& b
 
 static int board_score_webgpu_impl(const PieceList& pieces, const std::string& perspective,
                                    const AttackCache* cache = nullptr,
-                                   const std::string* side_to_move = nullptr) {
+                                   const std::string* side_to_move = nullptr,
+                                   const SearchState* eval_state = nullptr) {
+    (void)eval_state;
     EvalBatchRequest req{&pieces, &perspective, cache, side_to_move};
     auto out = board_score_batch_webgpu_impl({req});
     return out.empty() ? 0 : out[0];
@@ -3689,10 +3865,11 @@ static int board_score_webgpu_impl(const PieceList& pieces, const std::string& p
 
 static int board_score(const PieceList& pieces, const std::string& perspective,
                        const AttackCache* cache = nullptr,
-                       const std::string* side_to_move = nullptr) {
+                       const std::string* side_to_move = nullptr,
+                       const SearchState* eval_state = nullptr) {
     if (active_eval_backend() == EvalBackendKind::WEBGPU)
-        return board_score_webgpu_impl(pieces, perspective, cache, side_to_move);
-    return board_score_cpu_impl(pieces, perspective, cache, side_to_move);
+        return board_score_webgpu_impl(pieces, perspective, cache, side_to_move, eval_state);
+    return board_score_cpu_impl(pieces, perspective, cache, side_to_move, eval_state);
 }
 
 // ── Quiescence ────────────────────────────────────────────────────────────
@@ -3707,7 +3884,7 @@ static int quiesce(SearchState& st, int alpha, int beta,
     int stand = (perspective == cpu_player) ? st.quick_eval : -st.quick_eval;
     if (q_depth == 0) {
         ensure_attack_cache(st);
-        int precise = board_score(st.pieces, perspective, &st.atk, &perspective);
+        int precise = board_score(st.pieces, perspective, &st.atk, &perspective, &st);
         stand = (stand * 2 + precise) / 3;
     }
 
@@ -3923,7 +4100,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     uint64_t h = st.hash;
     const MoveTriple* hash_move_ptr = nullptr;
     MoveTriple hash_move_buf{};
-    const TTEntry* tte = tt_probe(h);
+    const TTDecoded* tte = tt_probe(h);
     if (tte && tte->depth >= depth && !pv_node) {
         if      (tte->flag==TT_EXACT) return tte->val;
         else if (tte->flag==TT_LOWER && tte->val>alpha) alpha=tte->val;
@@ -4088,7 +4265,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     AllMoves moves = all_moves_for(st.pieces, st.turn);
     if (moves.empty()) {
         ensure_attack_cache(st);
-        return board_score(st.pieces, cpu_player, &st.atk, &st.turn);
+        return board_score(st.pieces, cpu_player, &st.atk, &st.turn, &st);
     }
 
     const MoveTriple* pv_move_ptr = nullptr;
@@ -4097,10 +4274,11 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         pv_move_buf = td ? td->pv[ply][ply] : g_pv[ply][ply];
         pv_move_ptr = &pv_move_buf;
     }
-    moves = order_moves(moves, st.pieces, st.turn, ply, hash_move_ptr, pv_move_ptr, prev_move, td);
+    MovePicker picker(moves, st.pieces, st.turn, ply, hash_move_ptr, pv_move_ptr, prev_move, td);
 
     int val = node_is_max ? -999999 : 999999;
-    MoveTriple best_move = moves[0];
+    MoveTriple best_move{};
+    bool have_best_move = false;
     int move_index = 0;
     int hist_pl = player_idx(st.turn);
     if (hist_pl < 0) hist_pl = 0;
@@ -4110,8 +4288,10 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     std::array<QuietEntry, 64> searched_quiets{};
     int searched_quiet_count = 0;
 
-    for (auto& m : moves) {
+    MoveTriple m{};
+    while (picker.next(m)) {
         if (time_up()) break;
+        if (!have_best_move) { best_move = m; have_best_move = true; }
         int moved_idx0 = find_piece_idx_by_id_fast(st, m.pid);
         int moved_ki = (moved_idx0 >= 0) ? kind_index(st.pieces[moved_idx0].kind) : -1;
         int target_idx = find_piece_idx_at_fast(st, m.dc, m.dr);
@@ -4404,9 +4584,9 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         }
     }
 
-    if (move_index == 0) {
+    if (move_index == 0 || !have_best_move) {
         ensure_attack_cache(st);
-        return board_score(st.pieces, cpu_player, &st.atk, &st.turn);
+        return board_score(st.pieces, cpu_player, &st.atk, &st.turn, &st);
     }
 
     int flag = (val<=orig_alpha) ? TT_UPPER : (val>=orig_beta ? TT_LOWER : TT_EXACT);
@@ -5050,7 +5230,7 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
 
             MoveTriple root_hash_buf{};
             const MoveTriple* root_hash_move = nullptr;
-            const TTEntry* rt = tt_probe(root.hash);
+            const TTDecoded* rt = tt_probe(root.hash);
             if (rt) { root_hash_buf = tt_unpack_move(*rt); root_hash_move = &root_hash_buf; }
 
             MoveTriple root_pv_buf{};
@@ -5257,7 +5437,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
 
             MoveTriple root_hash_buf{};
             const MoveTriple* root_hash_move = nullptr;
-            const TTEntry* rt = tt_probe(root.hash);
+            const TTDecoded* rt = tt_probe(root.hash);
             if (rt) { root_hash_buf = tt_unpack_move(*rt); root_hash_move = &root_hash_buf; }
 
             MoveTriple root_pv_buf{};
