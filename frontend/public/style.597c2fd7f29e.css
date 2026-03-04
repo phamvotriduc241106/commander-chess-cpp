@@ -132,14 +132,14 @@ body {
     linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, #fff), var(--bg));
   background-size: 48px 48px, 48px 48px, auto, auto, auto;
   background-position: center, center, center, center, center;
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 /* === 0) Background layer so blur has content === */
 .app-bg {
   position: relative;
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: auto;
   isolation: isolate;
 }
 
@@ -1371,6 +1371,7 @@ select,
   max-width: 1320px;
   margin: 0 auto;
   padding: 18px;
+  overflow-x: auto;
 }
 
 .titlebar {
@@ -1627,9 +1628,10 @@ select,
 .layout {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: minmax(150px, 240px) minmax(0, 1fr) minmax(150px, 240px);
+  grid-template-columns: minmax(140px, 220px) minmax(420px, 1fr) minmax(140px, 220px);
   gap: 12px;
   align-items: start;
+  min-width: 920px;
 }
 
 .board-panel {
@@ -1638,7 +1640,7 @@ select,
   border: 1px solid var(--c-shadow);
   border-radius: 14px;
   padding: 14px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 10px 22px rgba(47, 58, 74, 0.1);
 }
 
@@ -2727,7 +2729,8 @@ html[data-theme="dark"] .field-theme-prominent {
 
 @media (max-width: 1220px) {
   .layout {
-    grid-template-columns: minmax(130px, 210px) minmax(0, 1fr) minmax(130px, 210px);
+    grid-template-columns: minmax(120px, 190px) minmax(400px, 1fr) minmax(120px, 190px);
+    min-width: 860px;
   }
   .side-panel { display: flex; }
   .setup-grid-two { grid-template-columns: 1fr; }
@@ -2738,7 +2741,7 @@ html[data-theme="dark"] .field-theme-prominent {
   .difficulty-grid { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 620px) {
   .layout { grid-template-columns: 1fr; }
   .board-panel,
   .side-panel-left,
