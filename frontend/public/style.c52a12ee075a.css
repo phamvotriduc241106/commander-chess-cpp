@@ -2420,6 +2420,9 @@ html[data-theme="dark"] .field-theme-prominent {
   --cc-surface: var(--surface, #ffffff);
   --cc-text: var(--text, #1a1a1a);
   --cc-accent: var(--accent, #d4af37);
+  --cc-shadow-soft: 0 10px 26px rgba(0, 0, 0, 0.10);
+  --cc-shadow-strong: 0 18px 44px rgba(0, 0, 0, 0.16);
+  --cc-glow-accent: 0 0 18px color-mix(in srgb, var(--cc-accent) 18%, transparent);
 }
 
 #setupOverlay .cc-glass-window {
@@ -2556,6 +2559,64 @@ html[data-theme="dark"] .field-theme-prominent {
   box-shadow:
     0 0 0 4px color-mix(in srgb, var(--cc-accent) 14%, transparent),
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* ===== Depth + Glow Polish (existing palette only) ===== */
+.titlebar,
+.statusbar,
+.card,
+.board-panel {
+  box-shadow:
+    var(--cc-shadow-soft),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.titlebar:hover,
+.statusbar:hover,
+.card:hover,
+.board-panel:hover {
+  box-shadow:
+    var(--cc-shadow-strong),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.btn.primary {
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.btn.primary:hover {
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.18),
+    var(--cc-glow-accent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.btn.ghost:hover,
+.mode-btn.active,
+.diff-btn.active,
+.theme-btn.active,
+.side-btn.active,
+.lang-btn.active,
+.player-mode-btn.active {
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.12),
+    var(--cc-glow-accent);
+}
+
+.piece-active,
+.cell.selected {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--c-accent) 72%, transparent),
+    var(--cc-glow-accent);
+}
+
+.cc-tile:focus-visible,
+.btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--cc-accent) 36%, transparent);
+  outline-offset: 2px;
+  box-shadow: var(--cc-glow-accent);
 }
 
 .about-list a {
