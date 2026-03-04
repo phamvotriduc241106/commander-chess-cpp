@@ -1815,6 +1815,17 @@ html[data-animations="off"] .move-fx-layer {
   display: none !important;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  html[data-animations="on"] *,
+  html[data-animations="on"] *::before,
+  html[data-animations="on"] *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .river-label {
   position: absolute;
   left: calc(var(--cell) * 2.04);
@@ -2219,34 +2230,46 @@ html[data-theme="dark"] .field-theme-prominent {
     padding: 8px;
   }
   .board-stage {
-    --cell: clamp(38px, 8.2vw, 52px);
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
-    gap: 0;
-    width: 100%;
-    max-width: 95vw;
+    --cell: clamp(30px, 7.6vw, 44px);
+    grid-template-columns: 18px auto;
+    grid-template-rows: auto 18px;
+    gap: 4px;
+    width: max-content;
+    max-width: 100%;
     margin: 0 auto;
     justify-items: center;
   }
   .coord-y,
   .coord-x {
-    display: none;
+    display: grid;
+    font-size: 0.64rem;
+    opacity: 0.9;
   }
-  .board-frame {
+  .coord-y {
     grid-column: 1;
     grid-row: 1;
-    width: 100%;
-    max-width: 95vw;
-    height: auto;
-    aspect-ratio: 11 / 12;
+    grid-template-rows: repeat(12, var(--cell));
+  }
+  .coord-x {
+    grid-column: 2;
+    grid-row: 2;
+    grid-template-columns: repeat(11, var(--cell));
+  }
+  .board-frame {
+    grid-column: 2;
+    grid-row: 1;
+    width: calc(var(--cell) * 11);
+    max-width: none;
+    height: calc(var(--cell) * 12);
+    aspect-ratio: auto;
   }
   .board {
-    width: 100%;
-    max-width: 95vw;
-    height: auto;
-    aspect-ratio: 11 / 12;
-    grid-template-columns: repeat(11, minmax(0, 1fr));
-    grid-template-rows: repeat(12, minmax(0, 1fr));
+    width: calc(var(--cell) * 11);
+    max-width: none;
+    height: calc(var(--cell) * 12);
+    aspect-ratio: auto;
+    grid-template-columns: repeat(11, var(--cell));
+    grid-template-rows: repeat(12, var(--cell));
   }
   .quick-tutorial-overlay {
     left: 6px;
@@ -2281,7 +2304,7 @@ html[data-theme="dark"] .field-theme-prominent {
 
 @media (max-width: 680px) {
   .board-panel { padding: 8px; }
-  .board-stage { --cell: 44px; }
+  .board-stage { --cell: clamp(26px, 7.2vw, 36px); }
   .tutorial-card {
     padding: 10px;
   }

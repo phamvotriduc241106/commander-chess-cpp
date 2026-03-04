@@ -100,6 +100,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #if defined(__EMSCRIPTEN__)
@@ -669,21 +670,44 @@ static bool piece_has_carried_children(const PieceList& pieces, int carrier_id) 
     return false;
 }
 
-static void collect_carried_ids(const PieceList& pieces, int carrier_id, std::set<int>& out_ids) {
-    for (const auto& p : pieces) {
-        if (p.carrier_id != carrier_id) continue;
-        if (!out_ids.insert(p.id).second) continue;
-        collect_carried_ids(pieces, p.id, out_ids);
-    }
-}
-
 static void remove_piece_with_carried(PieceList& pieces, int root_id) {
-    std::set<int> ids;
-    ids.insert(root_id);
-    collect_carried_ids(pieces, root_id, ids);
-    pieces.erase(std::remove_if(pieces.begin(), pieces.end(),
-                                [&](const Piece& p){ return ids.count(p.id) != 0; }),
-                 pieces.end());
+    // Mark pieces to remove by index to avoid tree allocations in hot paths.
+    std::array<uint8_t, PieceList::kMaxPieces> remove_mask{};
+    remove_mask.fill(0);
+
+    for (int i = 0; i < (int)pieces.size(); i++) {
+        if (pieces[i].id == root_id) {
+            remove_mask[i] = 1;
+            break;
+        }
+    }
+
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (int i = 0; i < (int)pieces.size(); i++) {
+            if (remove_mask[i]) continue;
+            int cid = pieces[i].carrier_id;
+            if (cid < 0) continue;
+            for (int j = 0; j < (int)pieces.size(); j++) {
+                if (!remove_mask[j]) continue;
+                if (pieces[j].id == cid) {
+                    remove_mask[i] = 1;
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    int out = 0;
+    for (int i = 0; i < (int)pieces.size(); i++) {
+        if (!remove_mask[i]) {
+            if (out != i) pieces[(std::size_t)out] = std::move(pieces[(std::size_t)i]);
+            out++;
+        }
+    }
+    pieces.len = (std::size_t)out;
 }
 
 static void sync_carried_positions(PieceList& pieces, int carrier_id) {
@@ -1202,24 +1226,29 @@ static std::vector<Move2> get_moves(const Piece& piece, const PieceList& pieces_
     return get_moves_with_ctx(piece, ctx);
 }
 
+static inline bool has_legal_destination_with_ctx(const Piece& piece, const MoveGenContext& ctx,
+                                                  int dc, int dr) {
+    if (!on_board(dc, dr)) return false;
+    BB132 bb = get_move_mask_bitboard(piece, ctx);
+    return bb.test(sq_index(dc, dr));
+}
+
 static bool has_legal_destination(const Piece& piece, const PieceList& pieces,
                                   int dc, int dr) {
-    auto mvs = get_moves(piece, pieces);
-    for (const auto& mv : mvs) {
-        if (mv.first == dc && mv.second == dr) return true;
-    }
-    return false;
+    MoveGenContext ctx = build_movegen_context(pieces);
+    return has_legal_destination_with_ctx(piece, ctx, dc, dr);
 }
 
 static bool square_capturable_by_player(const PieceList& pieces, int col, int row,
                                         const std::string& by_player) {
+    if (!on_board(col, row)) return false;
+    int target_sq = sq_index(col, row);
+    MoveGenContext ctx = build_movegen_context(pieces);
     for (const auto& p : pieces) {
         if (p.player != by_player) continue;
         if (!on_board(p.col, p.row)) continue;
-        auto mvs = get_moves(p, pieces);
-        for (const auto& mv : mvs) {
-            if (mv.first == col && mv.second == row) return true;
-        }
+        BB132 bb = get_move_mask_bitboard(p, ctx);
+        if (bb.test(target_sq)) return true;
     }
     return false;
 }
@@ -1228,6 +1257,7 @@ static void promote_heroes_from_checks(PieceList& pieces) {
     bool changed = true;
     while (changed) {
         changed = false;
+        MoveGenContext ctx = build_movegen_context(pieces);
         for (auto& p : pieces) {
             if (p.hero) continue;
             if (!on_board(p.col, p.row)) continue;
@@ -1239,13 +1269,9 @@ static void promote_heroes_from_checks(PieceList& pieces) {
                 }
             }
             if (!enemy_cmd) continue;
-            auto mvs = get_moves(p, pieces);
-            for (const auto& mv : mvs) {
-                if (mv.first == enemy_cmd->col && mv.second == enemy_cmd->row) {
-                    p.hero = true;
-                    changed = true;
-                    break;
-                }
+            if (has_legal_destination_with_ctx(p, ctx, enemy_cmd->col, enemy_cmd->row)) {
+                p.hero = true;
+                changed = true;
             }
         }
 
@@ -1682,51 +1708,51 @@ static inline bool valid_move_hint(const MoveTriple& m) {
 // 5) Navy/Tank stay-and-fire: navy/tank may capture without entering forbidden terrain.
 
 // Internal implementation shared by both checked and unchecked apply_move variants.
-static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
-    PieceList np = pieces;
+// Mutates `np` in place and returns true on success, false on invalid move.
+static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr, const std::string& player) {
     Piece* piece = piece_by_id(np, piece_id);
-    if (!piece || piece->player != player) return np;
-    if (!on_board(dc, dr)) return np;
+    if (!piece || piece->player != player) return false;
+    if (!on_board(dc, dr)) return false;
 
     int src_col = piece->col;
     int src_row = piece->row;
-    if (piece->carrier_id >= 0) piece->carrier_id = -1; // split from carrier
 
     Piece* target = piece_at(np, dc, dr);
-    bool navy_stays = (piece->kind=="N" && target && target->player != player && !is_navigable(dc,dr))
-                    || (piece->kind=="T" && target && target->player != player && is_sea(dc,dr));
+    const bool enemy_target = (target && target->player != player);
+    bool navy_stays = (piece->kind=="N" && enemy_target && !is_navigable(dc,dr))
+                    || (piece->kind=="T" && enemy_target && is_sea(dc,dr));
 
     // Friendly-stack move (load / board)
     if (target && target->player == player) {
         Piece mover_before = *piece;
         Piece target_before = *target;
-        if (can_stack_together(np, mover_before, target_before)) {
-            // Mover becomes the carrier.
-            piece->col = dc;
-            piece->row = dr;
-            target->carrier_id = piece->id;
-            target->col = dc;
-            target->row = dr;
-            sync_carried_positions(np, target->id);
-            sync_carried_positions(np, piece->id);
-        } else {
-            return pieces;
-        }
+        if (!can_stack_together(np, mover_before, target_before)) return false;
+        if (piece->carrier_id >= 0) piece->carrier_id = -1; // split from carrier
+
+        // Mover becomes the carrier.
+        piece->col = dc;
+        piece->row = dr;
+        target->carrier_id = piece->id;
+        target->col = dc;
+        target->row = dr;
+        sync_carried_positions(np, target->id);
+        sync_carried_positions(np, piece->id);
         promote_heroes_from_checks(np);
-        return np;
+        return true;
     }
 
-    if (target && target->player != player) {
+    if (enemy_target) {
         Piece captured_before = *target;
         remove_piece_with_carried(np, target->id);
         piece = piece_by_id(np, piece_id);
-        if (!piece) return np;
+        if (!piece) return false;
+        if (piece->carrier_id >= 0) piece->carrier_id = -1; // split from carrier
 
         // Non-hero AF entering enemy AA ring is shot down.
         if (piece->kind=="Af" && !piece->hero && in_aa_range(np, dc, dr, player)) {
             remove_piece_with_carried(np, piece->id);
             promote_heroes_from_checks(np);
-            return np;
+            return true;
         }
 
         if (!navy_stays) {
@@ -1744,13 +1770,20 @@ static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, 
             }
         }
         promote_heroes_from_checks(np);
-        return np;
+        return true;
     }
 
+    if (piece->carrier_id >= 0) piece->carrier_id = -1; // split from carrier
     piece->col = dc;
     piece->row = dr;
     sync_carried_positions(np, piece->id);
     promote_heroes_from_checks(np);
+    return true;
+}
+
+static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+    PieceList np = pieces;
+    if (!apply_move_impl_inplace(np, piece_id, dc, dr, player)) return pieces;
     return np;
 }
 
@@ -1765,6 +1798,10 @@ static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int d
 
 // Unchecked version: skips redundant legality check. Used by search when legality
 // was already verified by the caller (saves a full move generation per search node).
+static bool apply_move_unchecked_inplace(PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+    return apply_move_impl_inplace(pieces, piece_id, dc, dr, player);
+}
+
 static PieceList apply_move_unchecked(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
     return apply_move_impl(pieces, piece_id, dc, dr, player);
 }
@@ -1773,11 +1810,17 @@ using AllMoves = std::vector<MoveTriple>;
 
 static AllMoves all_moves_for(const PieceList& pieces, const std::string& player) {
     AllMoves result;
+    result.reserve(256);
     MoveGenContext ctx = build_movegen_context(pieces);
     for (auto& p : pieces) {
         if (p.player != player) continue;
-        auto mvs = get_moves_with_ctx(p, ctx);
-        for (auto& m : mvs) result.push_back({p.id, m.first, m.second});
+        BB132 bb = get_move_mask_bitboard(p, ctx);
+        for (int c = 0; c < COLS; c++) {
+            for (int r = 0; r < ROWS; r++) {
+                int sq = sq_index(c, r);
+                if (bb.test(sq)) result.push_back({p.id, c, r});
+            }
+        }
     }
     return result;
 }
@@ -1822,6 +1865,7 @@ struct AttackCache {
 };
 
 struct SearchState {
+    static constexpr int kFastIdMax = 512;
     PieceList pieces;
     std::string turn;
     uint64_t hash = 0;
@@ -1832,12 +1876,22 @@ struct SearchState {
     int cmd_row[2] = {-1, -1};
     // Cached navy counts per player.
     int navy_count[2] = {0, 0};
+    // O(1) lookups for hot search paths.
+    std::array<int16_t, COLS * ROWS> sq_to_piece_idx{};
+    std::array<int16_t, kFastIdMax> id_to_piece_idx{};
 
     void rebuild_caches() {
         cmd_col[0] = cmd_col[1] = -1;
         cmd_row[0] = cmd_row[1] = -1;
         navy_count[0] = navy_count[1] = 0;
-        for (auto& p : pieces) {
+        sq_to_piece_idx.fill(-1);
+        id_to_piece_idx.fill(-1);
+        for (int i = 0; i < (int)pieces.size(); i++) {
+            auto& p = pieces[(std::size_t)i];
+            if (p.id >= 0 && p.id < kFastIdMax) id_to_piece_idx[(std::size_t)p.id] = (int16_t)i;
+            if (p.carrier_id < 0 && on_board(p.col, p.row)) {
+                sq_to_piece_idx[(std::size_t)sq_index(p.col, p.row)] = (int16_t)i;
+            }
             int pi = (p.player == "red") ? 0 : 1;
             if (p.kind == "C") { cmd_col[pi] = p.col; cmd_row[pi] = p.row; }
             if (p.kind == "N") navy_count[pi]++;
@@ -1871,13 +1925,38 @@ static int find_piece_idx_at(const PieceList& pieces, int col, int row) {
     return -1;
 }
 
+static inline int find_piece_idx_by_id_fast(const SearchState& st, int pid) {
+    if (pid >= 0 && pid < SearchState::kFastIdMax) {
+        return (int)st.id_to_piece_idx[(std::size_t)pid];
+    }
+    return find_piece_idx_by_id(st.pieces, pid);
+}
+
+static inline int find_piece_idx_at_fast(const SearchState& st, int col, int row) {
+    if (!on_board(col, row)) return -1;
+    return (int)st.sq_to_piece_idx[(std::size_t)sq_index(col, row)];
+}
+
 static bool validate_state(const PieceList& pieces) {
-    std::set<int> ids;
-    std::set<std::pair<int,int>> occ;
+    constexpr int kFastIdMax = 512;
+    std::array<uint8_t, kFastIdMax> id_seen{};
+    id_seen.fill(0);
+    std::unordered_set<int> slow_ids;
+    std::array<uint8_t, COLS * ROWS> occ{};
+    occ.fill(0);
     for (auto& p : pieces) {
         if (!on_board(p.col, p.row)) return false;
-        if (!ids.insert(p.id).second) return false;
-        if (p.carrier_id < 0 && !occ.insert({p.col, p.row}).second) return false;
+        if (p.id >= 0 && p.id < kFastIdMax) {
+            if (id_seen[(std::size_t)p.id]) return false;
+            id_seen[(std::size_t)p.id] = 1;
+        } else {
+            if (!slow_ids.insert(p.id).second) return false;
+        }
+        if (p.carrier_id < 0) {
+            int sq = sq_index(p.col, p.row);
+            if (occ[(std::size_t)sq]) return false;
+            occ[(std::size_t)sq] = 1;
+        }
     }
     for (auto& p : pieces) {
         if (p.carrier_id < 0) continue;
@@ -1898,8 +1977,12 @@ static bool validate_state(const PieceList& pieces) {
 static bool validate_state_for_sim(const PieceList& pieces,
                                    const std::string& last_mover,
                                    std::string* reason = nullptr) {
-    std::set<int> ids;
-    std::set<std::pair<int,int>> occ;
+    constexpr int kFastIdMax = 512;
+    std::array<uint8_t, kFastIdMax> id_seen{};
+    id_seen.fill(0);
+    std::unordered_set<int> slow_ids;
+    std::array<uint8_t, COLS * ROWS> occ{};
+    occ.fill(0);
     int red_cmd = 0;
     int blue_cmd = 0;
 
@@ -1908,13 +1991,25 @@ static bool validate_state_for_sim(const PieceList& pieces,
             if (reason) *reason = "piece out of bounds";
             return false;
         }
-        if (!ids.insert(p.id).second) {
-            if (reason) *reason = "duplicate piece id";
-            return false;
+        if (p.id >= 0 && p.id < kFastIdMax) {
+            if (id_seen[(std::size_t)p.id]) {
+                if (reason) *reason = "duplicate piece id";
+                return false;
+            }
+            id_seen[(std::size_t)p.id] = 1;
+        } else {
+            if (!slow_ids.insert(p.id).second) {
+                if (reason) *reason = "duplicate piece id";
+                return false;
+            }
         }
-        if (p.carrier_id < 0 && !occ.insert({p.col, p.row}).second) {
-            if (reason) *reason = "square occupied by multiple pieces";
-            return false;
+        if (p.carrier_id < 0) {
+            int sq = sq_index(p.col, p.row);
+            if (occ[(std::size_t)sq]) {
+                if (reason) *reason = "square occupied by multiple pieces";
+                return false;
+            }
+            occ[(std::size_t)sq] = 1;
         }
         if (p.kind == "C") {
             if (p.player == "red") red_cmd++;
@@ -2289,10 +2384,12 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
                                        const std::string& cpu_player, UndoMove& u) {
     u = UndoMove{};
     if (!on_board(m.dc, m.dr)) return false;
-    int moved_idx = find_piece_idx_by_id(st.pieces, m.pid);
+    int moved_idx = find_piece_idx_by_id_fast(st, m.pid);
     if (moved_idx < 0) return false;
     if (st.pieces[moved_idx].player != st.turn) return false;
-    if (!has_legal_destination(st.pieces[moved_idx], st.pieces, m.dc, m.dr)) return false;
+
+    MoveGenContext mg_ctx = build_movegen_context(st.pieces);
+    if (!has_legal_destination_with_ctx(st.pieces[moved_idx], mg_ctx, m.dc, m.dr)) return false;
 
     u.snapshot_pieces = st.pieces;
     u.turn_before = st.turn;
@@ -2300,13 +2397,13 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
     u.quick_eval_before = st.quick_eval;
     u.moved_piece = st.pieces[moved_idx];
 
-    int captured_idx = find_piece_idx_at(st.pieces, m.dc, m.dr);
+    int captured_idx = find_piece_idx_at_fast(st, m.dc, m.dr);
     if (captured_idx >= 0 && st.pieces[captured_idx].player != st.turn) {
         u.had_capture = true;
         u.captured_piece = st.pieces[captured_idx];
     }
 
-    st.pieces = apply_move_unchecked(st.pieces, m.pid, m.dc, m.dr, st.turn);
+    if (!apply_move_unchecked_inplace(st.pieces, m.pid, m.dc, m.dr, st.turn)) return false;
     st.turn = opp(st.turn);
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
     st.quick_eval = quick_eval_cpu(st.pieces, cpu_player);
@@ -3649,17 +3746,23 @@ static int quiesce(SearchState& st, int alpha, int beta,
     struct CapMove { int pid, dc, dr, see_val; bool is_quiet; };
     CapMove caps[128];  // enough for captures + commander evasions
     int ncaps = 0;
+    MoveGenContext qctx = build_movegen_context(st.pieces);
     for (auto& p : st.pieces) {
         if (p.player != perspective) continue;
-        auto mvs = get_moves(p, st.pieces);
-        for (auto& m : mvs) {
-            const Piece* t = piece_at_c(st.pieces, m.first, m.second);
+        BB132 bb = get_move_mask_bitboard(p, qctx);
+        for (int c = 0; c < COLS; c++) {
+            for (int r = 0; r < ROWS; r++) {
+                int sq = sq_index(c, r);
+                if (!bb.test(sq)) continue;
+                int ti = qctx.sq_to_piece[(std::size_t)sq];
+                const Piece* t = (ti >= 0) ? &st.pieces[(std::size_t)ti] : nullptr;
             bool is_cap = (t && t->player != perspective);
             // In check: also include quiet commander moves as evasions
             bool is_evasion = (in_check && p.kind == "C" && !is_cap);
             if (!is_cap && !is_evasion) continue;
-            int sv = is_cap ? see(st.pieces, m.first, m.second, perspective) : 0;
-            if (ncaps < 128) caps[ncaps++] = {p.id, m.first, m.second, sv, !is_cap};
+                int sv = is_cap ? see(st.pieces, c, r, perspective) : 0;
+                if (ncaps < 128) caps[ncaps++] = {p.id, c, r, sv, !is_cap};
+            }
         }
     }
     // Insertion sort (fast for small N, no allocations): captures first by SEE, then evasions
@@ -4009,9 +4112,10 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
     for (auto& m : moves) {
         if (time_up()) break;
-        int moved_idx0 = find_piece_idx_by_id(st.pieces, m.pid);
+        int moved_idx0 = find_piece_idx_by_id_fast(st, m.pid);
         int moved_ki = (moved_idx0 >= 0) ? kind_index(st.pieces[moved_idx0].kind) : -1;
-        const Piece* target = piece_at_c(st.pieces, m.dc, m.dr);
+        int target_idx = find_piece_idx_at_fast(st, m.dc, m.dr);
+        const Piece* target = (target_idx >= 0) ? &st.pieces[(std::size_t)target_idx] : nullptr;
         bool is_capture = (target && target->player != st.turn);
         const bool captures_navy = is_capture && target && target->kind=="N";
         bool is_critical_capture = is_capture &&
@@ -4764,13 +4868,12 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
 }
 
 static bool is_legal_book_move(const SearchState& st, const std::string& cpu_player, const MoveTriple& cand) {
-    int idx = find_piece_idx_by_id(st.pieces, cand.pid);
+    int idx = find_piece_idx_by_id_fast(st, cand.pid);
     if (idx < 0) return false;
     const Piece& p = st.pieces[idx];
     if (p.player != cpu_player) return false;
-    auto mvs = get_moves(p, st.pieces);
-    for (auto& mv : mvs) if (mv.first==cand.dc && mv.second==cand.dr) return true;
-    return false;
+    MoveGenContext ctx = build_movegen_context(st.pieces);
+    return has_legal_destination_with_ctx(p, ctx, cand.dc, cand.dr);
 }
 
 static void append_book_move_from_square(std::vector<MoveTriple>& book,
@@ -4788,25 +4891,40 @@ static void append_book_move_from_square(std::vector<MoveTriple>& book,
 static int opening_immediate_risk(const PieceList& pieces, const std::string& cpu_player) {
     AllMoves om = all_moves_for(pieces, opp(cpu_player));
     bool commander_hanging = false;
-    std::set<int> af_hanging;
-    std::set<int> navy_hanging;
-    std::set<int> land_hanging;
+    std::array<uint8_t, PieceList::kMaxPieces> af_hanging{};
+    std::array<uint8_t, PieceList::kMaxPieces> navy_hanging{};
+    std::array<uint8_t, PieceList::kMaxPieces> land_hanging{};
+    int af_count = 0;
+    int navy_count = 0;
+    int land_count = 0;
+
+    auto idx_by_id = [&](int pid) -> int {
+        for (int i = 0; i < (int)pieces.size(); i++) {
+            if (pieces[(std::size_t)i].id == pid) return i;
+        }
+        return -1;
+    };
 
     for (auto& m : om) {
         const Piece* t = piece_at_c(pieces, m.dc, m.dr);
         if (!t || t->player != cpu_player) continue;
+        int ti = idx_by_id(t->id);
+        if (ti < 0) continue;
         if (t->kind == "C") commander_hanging = true;
-        else if (t->kind == "Af") af_hanging.insert(t->id);
-        else if (t->kind == "N") navy_hanging.insert(t->id);
-        else if (t->kind == "A" || t->kind == "T" || t->kind == "In")
-            land_hanging.insert(t->id);
+        else if (t->kind == "Af") {
+            if (!af_hanging[(std::size_t)ti]) { af_hanging[(std::size_t)ti] = 1; af_count++; }
+        } else if (t->kind == "N") {
+            if (!navy_hanging[(std::size_t)ti]) { navy_hanging[(std::size_t)ti] = 1; navy_count++; }
+        } else if (t->kind == "A" || t->kind == "T" || t->kind == "In") {
+            if (!land_hanging[(std::size_t)ti]) { land_hanging[(std::size_t)ti] = 1; land_count++; }
+        }
     }
 
     int risk = 0;
     if (commander_hanging) risk += 1000000;
-    risk += (int)af_hanging.size() * 6000;
-    risk += (int)navy_hanging.size() * 1400;
-    risk += (int)land_hanging.size() * 250;
+    risk += af_count * 6000;
+    risk += navy_count * 1400;
+    risk += land_count * 250;
     return risk;
 }
 

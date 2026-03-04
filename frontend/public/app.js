@@ -1574,6 +1574,14 @@ function systemPrefersDarkTheme() {
   return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
+function systemPrefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+function effectiveAnimationsEnabled() {
+  return !!(uiPrefs.animationsEnabled && !systemPrefersReducedMotion());
+}
+
 function resolvedTheme(theme) {
   if (theme === 'dark') return 'dark';
   if (theme === 'light') return 'light';
@@ -1848,10 +1856,11 @@ function rememberBoardFx(nextState, fromSquare) {
 
 function applyUiPrefs(nextPrefs = uiPrefs, persist = false) {
   uiPrefs = normalizeUiPrefs(nextPrefs);
+  const animationsActive = effectiveAnimationsEnabled();
 
   document.documentElement.setAttribute('data-board-skin', uiPrefs.boardSkin);
   document.documentElement.setAttribute('data-piece-theme', uiPrefs.pieceTheme);
-  document.documentElement.setAttribute('data-animations', uiPrefs.animationsEnabled ? 'on' : 'off');
+  document.documentElement.setAttribute('data-animations', animationsActive ? 'on' : 'off');
   if (boardEl) boardEl.classList.toggle('no-hints', !uiPrefs.moveHints);
 
   if (boardSkinSelect && boardSkinSelect.value !== uiPrefs.boardSkin) {
@@ -1868,7 +1877,7 @@ function applyUiPrefs(nextPrefs = uiPrefs, persist = false) {
   if (animToggleEl) animToggleEl.checked = uiPrefs.animationsEnabled;
   if (moveHintsToggleEl) moveHintsToggleEl.checked = uiPrefs.moveHints;
 
-  if (!uiPrefs.animationsEnabled) clearBoardFx();
+  if (!animationsActive) clearBoardFx();
   updateAudioMasterGain();
 
   if (persist) storeUiPrefs(uiPrefs);
@@ -1877,6 +1886,15 @@ function applyUiPrefs(nextPrefs = uiPrefs, persist = false) {
 function initializeUiPrefs() {
   uiPrefs = readStoredUiPrefs();
   applyUiPrefs(uiPrefs, false);
+  if (window.matchMedia) {
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const onChange = () => {
+      applyUiPrefs(uiPrefs, false);
+      drawBoard();
+    };
+    if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onChange);
+    else if (typeof mql.addListener === 'function') mql.addListener(onChange);
+  }
 }
 
 function isValidMode(mode) {
