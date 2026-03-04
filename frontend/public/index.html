@@ -16,18 +16,18 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.8f0fd265fa89.css" />
+  <link rel="stylesheet" href="/style.683467dc8d30.css" />
 </head>
 <body class="app-bg">
   <section id="setupOverlay" class="setup-overlay">
-    <div class="setup-card glass glass-hover">
+    <div class="setup-card main-panel glass glass-hover">
       <p id="setupKicker" class="kicker">Mode Setup</p>
-      <h2 id="setupTitle" class="setup-pixel-title">Welcome to Commander Chess</h2>
-      <p id="setupSub" class="setup-sub">Choose your settings, then start the match.</p>
+      <h2 id="setupTitle" class="title">Welcome to Commander Chess</h2>
+      <p id="setupSub" class="setup-sub subtitle">Choose your settings, then start the match.</p>
 
-      <div class="setup-language-top">
+      <div class="setup-language-top stack">
         <label class="field" for="setupLanguageSelect">
-          <span id="setupLanguageLabel">Language</span>
+          <span id="setupLanguageLabel" class="section-label">Language</span>
           <select id="setupLanguageSelect">
             <option value="en">English</option>
             <option value="vi">Vietnamese</option>
@@ -40,23 +40,25 @@
         </label>
       </div>
 
-      <section class="quick-presets">
-        <button id="presetQuickStartBtn" class="quick-preset-btn preset-beginner" type="button">
-          <strong>Quick Start (Beginner)</strong>
-          <span>Single · Full Battle · Beginner · Rulebook intro + tutorial · Auto start</span>
+      <section class="quick-presets stack">
+        <button id="presetQuickStartBtn" class="quick-preset-btn option-tile primary preset-beginner" type="button">
+          <strong class="option-title"><span class="icon">⚡</span>Quick Start (Beginner)</strong>
+          <span class="option-desc">Single · Full Battle · Beginner · Rulebook intro + tutorial · Auto start</span>
         </button>
-        <button id="presetClassicBtn" class="quick-preset-btn preset-classic" type="button">
-          <strong>Create Match</strong>
-          <span>Open full match setup (mode, side, difficulty, online).</span>
+        <button id="presetClassicBtn" class="quick-preset-btn option-tile preset-classic" type="button">
+          <strong class="option-title"><span class="icon">♟</span>Create Match</strong>
+          <span class="option-desc">Open full match setup (mode, side, difficulty, online).</span>
         </button>
       </section>
 
-      <div class="setup-about-wrap">
-        <button id="setupAboutToggleBtn" class="btn ghost setup-about-toggle" type="button">About</button>
+      <div class="setup-about-wrap stack">
+        <button id="setupAboutToggleBtn" class="btn ghost setup-about-toggle option-tile" type="button">
+          <span class="option-title"><span class="icon">ℹ</span>About</span>
+        </button>
       </div>
 
       <div id="setupDetailOptions" class="setup-detail-options" hidden>
-      <p id="languageLabel" class="setup-label">Language</p>
+      <p id="languageLabel" class="setup-label section-label">Language</p>
       <div id="languageButtons" class="setup-grid setup-grid-language">
         <button class="lang-btn" data-lang="en" type="button">English</button>
         <button class="lang-btn" data-lang="vi" type="button">Vietnamese</button>
@@ -67,14 +69,14 @@
         <button class="lang-btn" data-lang="de" type="button">German</button>
       </div>
 
-      <p id="setupThemeLabel" class="setup-label">Theme</p>
+      <p id="setupThemeLabel" class="setup-label section-label">Theme</p>
       <div id="setupThemeButtons" class="setup-grid setup-grid-three">
         <button class="theme-btn" data-theme="system" type="button">System</button>
         <button class="theme-btn" data-theme="light" type="button">Light</button>
         <button class="theme-btn" data-theme="dark" type="button">Dark</button>
       </div>
 
-      <p id="playerModeLabel" class="setup-label">Player Mode</p>
+      <p id="playerModeLabel" class="setup-label section-label">Player Mode</p>
       <div id="playerModeButtons" class="setup-grid setup-grid-three">
         <button class="player-mode-btn" data-player-mode="single" type="button">Single Player (vs CPU)</button>
         <button class="player-mode-btn" data-player-mode="local" type="button">Local Multiplayer (2 players)</button>

@@ -34,6 +34,11 @@
   --c-fx-blue: rgba(59, 130, 246, 0.78);
   --c-pixel-title: #c9a227;
   --c-pixel-outline: #5c5c5c;
+  --bg: var(--app-bg, var(--c-bg));
+  --surface: var(--app-surface, var(--c-panel));
+  --text: var(--app-text, var(--c-text-bright));
+  --muted: var(--app-muted, color-mix(in srgb, var(--c-text-bright) 60%, transparent));
+  --accent: var(--app-accent, var(--c-accent));
 }
 
 html[data-theme="light"] {
@@ -119,12 +124,15 @@ body {
   min-height: 100vh;
   color: var(--c-text-bright);
   font-family: "Rajdhani", sans-serif;
-  background: linear-gradient(
-    160deg,
-    var(--c-bg-grad-start) 0%,
-    var(--c-bg-grad-mid) 68%,
-    var(--c-bg-grad-end) 100%
-  );
+  background:
+    linear-gradient(rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    radial-gradient(circle at 20% 25%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 45%),
+    radial-gradient(circle at 80% 70%, rgba(0, 0, 0, 0.06), transparent 50%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, #fff), var(--bg));
+  background-size: 48px 48px, 48px 48px, auto, auto, auto;
+  background-position: center, center, center, center, center;
+  overflow-x: hidden;
 }
 
 /* === 0) Background layer so blur has content === */
@@ -132,32 +140,184 @@ body {
   position: relative;
   min-height: 100vh;
   overflow-x: hidden;
-  overflow-y: auto;
+  isolation: isolate;
 }
 
 .app-bg::before,
 .app-bg::after {
   content: "";
-  position: fixed;
-  inset: -20%;
+  position: absolute;
+  inset: -25%;
   background:
-    radial-gradient(circle at 20% 25%, rgba(255, 255, 255, 0.10), transparent 45%),
-    radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.08), transparent 50%),
-    radial-gradient(circle at 55% 80%, rgba(255, 255, 255, 0.06), transparent 55%);
-  filter: blur(30px);
+    radial-gradient(circle at 25% 35%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 45%),
+    radial-gradient(circle at 70% 30%, rgba(255, 255, 255, 0.10), transparent 55%),
+    radial-gradient(circle at 55% 80%, rgba(0, 0, 0, 0.06), transparent 60%);
+  filter: blur(40px);
   transform: translateZ(0);
   pointer-events: none;
   z-index: 0;
+  opacity: 0.85;
 }
 
 .app-bg::after {
-  opacity: 0.7;
-  filter: blur(45px);
+  filter: blur(60px);
+  opacity: 0.55;
 }
 
 .app-content {
   position: relative;
   z-index: 1;
+}
+
+/* Setup screen premium structure */
+.main-panel {
+  position: relative;
+  width: min(720px, calc(100% - 48px));
+  border-radius: 22px;
+  padding: 28px 28px 22px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.20);
+  box-shadow:
+    0 28px 80px rgba(0, 0, 0, 0.18),
+    0 10px 28px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(18px) saturate(165%) contrast(110%);
+  -webkit-backdrop-filter: blur(18px) saturate(165%) contrast(110%);
+  overflow: hidden;
+  transform: translateZ(0);
+  animation: panelIn 420ms ease both;
+}
+
+.main-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1200px 600px at 18% 0%, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.10) 35%, transparent 70%);
+  pointer-events: none;
+  opacity: 0.95;
+}
+
+.main-panel::after {
+  content: "";
+  position: absolute;
+  inset: -45%;
+  background: linear-gradient(120deg, transparent 44%, rgba(255, 255, 255, 0.14) 52%, transparent 60%);
+  transform: translateX(-18%) rotate(8deg);
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.main-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.title {
+  font-size: 28px;
+  letter-spacing: 1.6px;
+  line-height: 1.15;
+  color: var(--accent);
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.18),
+    0 0 12px color-mix(in srgb, var(--accent) 32%, transparent);
+  margin: 4px 0 6px;
+  font-family: "Orbitron", sans-serif;
+}
+
+.subtitle {
+  color: color-mix(in srgb, var(--text) 65%, transparent);
+  font-size: 13px;
+  line-height: 1.45;
+  margin-bottom: 14px;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--text) 45%, transparent);
+  margin-top: 10px;
+  margin-bottom: 6px;
+}
+
+.option-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.10);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+  cursor: pointer;
+  user-select: none;
+}
+
+.option-tile:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.16),
+    0 6px 16px rgba(0, 0, 0, 0.10);
+  border-color: rgba(0, 0, 0, 0.10);
+}
+
+.option-tile:active {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+}
+
+.option-tile.primary {
+  border-color: color-mix(in srgb, var(--accent) 35%, rgba(0, 0, 0, 0.08));
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.12),
+    0 0 22px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.option-tile.primary:hover {
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.18),
+    0 0 30px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.option-title {
+  font-weight: 650;
+  color: color-mix(in srgb, var(--text) 92%, transparent);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
+.option-desc {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--text) 60%, transparent);
+}
+
+.icon {
+  display: inline-flex;
+  width: 22px;
+  justify-content: center;
+  margin-right: 6px;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.2));
+  opacity: 0.9;
+}
+
+.option-tile:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent);
+  outline-offset: 3px;
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* === 1) Premium glass surface === */
@@ -276,17 +436,17 @@ select,
 }
 
 .setup-card {
-  width: min(940px, 100%);
+  width: auto;
   max-height: calc(100vh - 32px);
   overflow-y: auto;
-  background: var(--c-highlight);
-  border: 1px solid var(--c-shadow);
-  border-radius: 16px;
-  padding: 18px;
-  box-shadow: 0 18px 40px rgba(47, 58, 74, 0.18);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-.setup-card h2 {
+.setup-card h2:not(.title) {
   margin: 2px 0 4px;
   font-family: "Orbitron", sans-serif;
   font-size: 1.35rem;
@@ -312,10 +472,11 @@ select,
 }
 
 .setup-sub {
-  margin: 0 0 12px;
-  color: var(--c-text-dim);
+  margin: 0 0 14px;
+  color: color-mix(in srgb, var(--text) 65%, transparent);
   font-family: "IBM Plex Mono", monospace;
-  font-size: 0.82rem;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .setup-language-top {
@@ -367,13 +528,13 @@ select,
 }
 
 .quick-preset-btn.preset-beginner {
-  border-color: #4d9ed9;
-  background: linear-gradient(180deg, rgba(77, 158, 217, 0.18), rgba(77, 158, 217, 0.08));
+  border-color: color-mix(in srgb, var(--accent) 35%, rgba(0, 0, 0, 0.08));
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
 }
 
 .quick-preset-btn.preset-classic {
-  border-color: #ba9156;
-  background: linear-gradient(180deg, rgba(186, 145, 86, 0.2), rgba(186, 145, 86, 0.08));
+  border-color: rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
 }
 
 .setup-detail-options[hidden] {
@@ -1998,6 +2159,12 @@ html[data-animations="off"] .move-fx-layer {
   .glass-hover:hover {
     transform: none;
   }
+
+  .main-panel,
+  .option-tile {
+    animation: none;
+    transition: none;
+  }
 }
 
 .river-label {
@@ -2148,13 +2315,22 @@ html[data-animations="off"] .move-fx-layer {
 
 select {
   width: 100%;
-  padding: 9px 10px;
-  border-radius: 9px;
-  border: 1px solid var(--c-shadow);
-  background: var(--c-highlight);
-  color: var(--c-text-bright);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: var(--text);
   font-family: "Rajdhani", sans-serif;
   font-size: 0.95rem;
+  outline: none;
+}
+
+select:focus {
+  border-color: color-mix(in srgb, var(--accent) 45%, rgba(0, 0, 0, 0.10));
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .theme-select {
