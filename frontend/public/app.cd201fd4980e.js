@@ -756,6 +756,7 @@ const PIECE_GLYPH = Object.freeze({
 const TUTORIAL_STORAGE_KEY = 'tutorialCompleted';
 const QUICK_TUTORIAL_STORAGE_KEY = 'quickTutorialPromptSeen';
 const REPLAY_MAX_MOVES = 2048;
+const BOARD_PINCH_ZOOM_ENABLED = false;
 
 const TUTORIAL_STEPS = Object.freeze([
   {
@@ -5622,10 +5623,12 @@ if (rulesDocModalEl) {
 }
 
 if (boardFrameEl) {
-  boardFrameEl.addEventListener('touchstart', onBoardPinchStart, { passive: false });
-  boardFrameEl.addEventListener('touchmove', onBoardPinchMove, { passive: false });
-  boardFrameEl.addEventListener('touchend', onBoardPinchEnd);
-  boardFrameEl.addEventListener('touchcancel', onBoardPinchEnd);
+  if (BOARD_PINCH_ZOOM_ENABLED) {
+    boardFrameEl.addEventListener('touchstart', onBoardPinchStart, { passive: false });
+    boardFrameEl.addEventListener('touchmove', onBoardPinchMove, { passive: false });
+    boardFrameEl.addEventListener('touchend', onBoardPinchEnd);
+    boardFrameEl.addEventListener('touchcancel', onBoardPinchEnd);
+  }
 }
 
 sideSelect.addEventListener('change', () => {
