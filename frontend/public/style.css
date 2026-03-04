@@ -425,9 +425,11 @@ select,
   background: var(--c-bg);
   backdrop-filter: none;
   display: none;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 16px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   z-index: 120;
 }
 
@@ -2422,7 +2424,9 @@ html[data-theme="dark"] .field-theme-prominent {
 
 #setupOverlay .cc-glass-window {
   position: relative;
-  width: min(760px, calc(100% - 56px));
+  width: min(760px, 100%);
+  max-width: calc(100vw - 24px);
+  margin: 12px auto;
   border-radius: 22px;
   padding: 20px 20px 16px;
   background: color-mix(in srgb, var(--cc-surface) 70%, transparent);
