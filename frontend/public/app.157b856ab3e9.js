@@ -1130,6 +1130,8 @@ let boardFx = null;
 let boardFxTimer = null;
 let moveDelightTimer = null;
 let moveDelightExplosionTimer = null;
+let boardDrawRafId = 0;
+let boardDrawQueued = false;
 let vectorSpriteCache = Object.create(null);
 
 let spriteMap = Object.create(null);
@@ -3163,7 +3165,7 @@ function onCellKeyDown(ev) {
   if (target) target.focus();
 }
 
-function drawBoard() {
+function drawBoardNow() {
   boardEl.innerHTML = '';
   const drawState = currentViewState();
   if (!drawState) return;
@@ -3275,6 +3277,29 @@ function drawBoard() {
   }
 
   boardEl.appendChild(frag);
+}
+
+function scheduleBoardDraw() {
+  if (boardDrawQueued) return;
+  boardDrawQueued = true;
+  boardDrawRafId = window.requestAnimationFrame(() => {
+    boardDrawQueued = false;
+    boardDrawRafId = 0;
+    drawBoardNow();
+  });
+}
+
+function drawBoard(immediate = false) {
+  if (immediate) {
+    if (boardDrawRafId) {
+      window.cancelAnimationFrame(boardDrawRafId);
+      boardDrawRafId = 0;
+      boardDrawQueued = false;
+    }
+    drawBoardNow();
+    return;
+  }
+  scheduleBoardDraw();
 }
 
 function setStatusTheme() {
@@ -5757,6 +5782,11 @@ window.addEventListener('beforeunload', () => {
   clearOnlineMatchSubscription();
   closeOnlineRtc();
   clearTutorialDragState();
+  if (boardDrawRafId) {
+    window.cancelAnimationFrame(boardDrawRafId);
+    boardDrawRafId = 0;
+    boardDrawQueued = false;
+  }
   if (authUnsub) authUnsub();
 });
 
@@ -5798,4 +5828,4 @@ tryLoadReplayFromUrl().catch((err) => {
   console.warn('[Commander Chess] replay boot load failed', err);
 });
 
-loadSprites().then(() => drawBoard());
+loadSprites().then(() => drawBoard(true));
