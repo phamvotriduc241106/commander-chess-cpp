@@ -1627,7 +1627,7 @@ select,
 .layout {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr) minmax(200px, 280px);
+  grid-template-columns: minmax(150px, 240px) minmax(0, 1fr) minmax(150px, 240px);
   gap: 12px;
   align-items: start;
 }
@@ -1643,7 +1643,7 @@ select,
 }
 
 .board-stage {
-  --cell: clamp(40px, 4.5vw, 60px);
+  --cell: clamp(28px, 3.8vw, 56px);
   display: grid;
   grid-template-columns: 28px auto;
   grid-template-rows: auto 28px;
@@ -2727,7 +2727,7 @@ html[data-theme="dark"] .field-theme-prominent {
 
 @media (max-width: 1220px) {
   .layout {
-    grid-template-columns: minmax(180px, 240px) minmax(0, 1fr) minmax(180px, 240px);
+    grid-template-columns: minmax(130px, 210px) minmax(0, 1fr) minmax(130px, 210px);
   }
   .side-panel { display: flex; }
   .setup-grid-two { grid-template-columns: 1fr; }
@@ -2738,7 +2738,7 @@ html[data-theme="dark"] .field-theme-prominent {
   .difficulty-grid { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; }
   .board-panel,
   .side-panel-left,
