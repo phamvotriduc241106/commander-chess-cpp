@@ -127,98 +127,134 @@ body {
   );
 }
 
-/* Reusable frosted glass surface */
+/* === 0) Background layer so blur has content === */
+.app-bg {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.app-bg::before,
+.app-bg::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 20% 25%, rgba(255, 255, 255, 0.10), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.08), transparent 50%),
+    radial-gradient(circle at 55% 80%, rgba(255, 255, 255, 0.06), transparent 55%);
+  filter: blur(30px);
+  transform: translateZ(0);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.app-bg::after {
+  opacity: 0.7;
+  filter: blur(45px);
+}
+
+.app-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* === 1) Premium glass surface === */
 .glass {
+  position: relative;
+  isolation: isolate;
+  border-radius: 18px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--glassTint, #ffffff) 10%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(160%) contrast(110%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%) contrast(110%);
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow:
+    0 18px 50px rgba(0, 0, 0, 0.18),
+    0 2px 10px rgba(0, 0, 0, 0.10) !important;
+  transform: translateZ(0);
+}
+
+/* === 2) Glass highlight === */
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(1200px 600px at 20% 0%,
+      rgba(255, 255, 255, 0.22),
+      rgba(255, 255, 255, 0.06) 40%,
+      transparent 70%);
+  opacity: 0.9;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* === 3) Shine streak === */
+.glass::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
   background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.12),
-    rgba(255, 255, 255, 0.03)
+    120deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.14) 50%,
+    transparent 60%
   );
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
-  box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  color: var(--c-text-bright);
-  transition: transform 140ms ease, box-shadow 140ms ease;
+  transform: translateX(-15%) rotate(8deg);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
 }
 
-.glass:hover {
-  transform: translateY(-2px);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+.glass > * {
+  position: relative;
+  z-index: 1;
 }
 
-/* Apply glass effect to existing UI surfaces */
-.titlebar,
-.setup-card,
-.setup-about-card,
-.online-panel,
-.rules-panel,
-.rules-accordion-item,
-.rules-doc-card,
-.tutorial-card,
-.postgame-card,
-.statusbar,
-.board-panel,
-.card,
-#setupOverlay.show ~ .app .auth-panel,
 select,
 .theme-select {
-  background: linear-gradient(
-    145deg,
-    rgba(255, 255, 255, 0.12),
-    rgba(255, 255, 255, 0.03)
-  );
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 16px;
+  background: color-mix(in srgb, var(--glassTint, #ffffff) 10%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(160%) contrast(110%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%) contrast(110%);
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    0 12px 28px rgba(0, 0, 0, 0.14),
+    0 1px 6px rgba(0, 0, 0, 0.08) !important;
 }
 
-.titlebar:hover,
-.setup-card:hover,
-.setup-about-card:hover,
-.online-panel:hover,
-.rules-panel:hover,
-.rules-accordion-item:hover,
-.rules-doc-card:hover,
-.tutorial-card:hover,
-.postgame-card:hover,
-.statusbar:hover,
-.board-panel:hover,
-.card:hover,
-#setupOverlay.show ~ .app .auth-panel:hover {
-  transform: translateY(-2px);
+/* === 4) Optional micro-noise layer === */
+.glass-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+}
+
+/* === 5) Premium hover depth === */
+.glass-hover {
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.glass-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.22) !important;
   box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    0 24px 70px rgba(0, 0, 0, 0.22),
+    0 3px 14px rgba(0, 0, 0, 0.12) !important;
+  backdrop-filter: blur(20px) saturate(175%) contrast(112%);
+  -webkit-backdrop-filter: blur(20px) saturate(175%) contrast(112%);
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .glass,
-  .titlebar,
-  .setup-card,
-  .setup-about-card,
-  .online-panel,
-  .rules-panel,
-  .rules-accordion-item,
-  .rules-doc-card,
-  .tutorial-card,
-  .postgame-card,
-  .statusbar,
-  .board-panel,
-  .card,
-  #setupOverlay.show ~ .app .auth-panel,
   select,
   .theme-select {
-    background: var(--c-panel-soft);
+    background: var(--c-panel-soft) !important;
   }
 }
 
@@ -1958,20 +1994,7 @@ html[data-animations="off"] .move-fx-layer {
     scroll-behavior: auto !important;
   }
 
-  .glass:hover,
-  .titlebar:hover,
-  .setup-card:hover,
-  .setup-about-card:hover,
-  .online-panel:hover,
-  .rules-panel:hover,
-  .rules-accordion-item:hover,
-  .rules-doc-card:hover,
-  .tutorial-card:hover,
-  .postgame-card:hover,
-  .statusbar:hover,
-  .board-panel:hover,
-  .card:hover,
-  #setupOverlay.show ~ .app .auth-panel:hover {
+  .glass-hover:hover {
     transform: none;
   }
 }

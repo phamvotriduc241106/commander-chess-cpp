@@ -16,11 +16,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.3eb709855843.css" />
+  <link rel="stylesheet" href="/style.b100291c488a.css" />
 </head>
-<body>
+<body class="app-bg">
   <section id="setupOverlay" class="setup-overlay">
-    <div class="setup-card">
+    <div class="setup-card glass glass-hover">
       <p id="setupKicker" class="kicker">Mode Setup</p>
       <h2 id="setupTitle" class="setup-pixel-title">Welcome to Commander Chess</h2>
       <p id="setupSub" class="setup-sub">Choose your settings, then start the match.</p>
@@ -81,7 +81,7 @@
         <button class="player-mode-btn" data-player-mode="online" type="button">Online Multiplayer (P2P)</button>
       </div>
 
-      <section id="onlinePanel" class="online-panel" hidden>
+      <section id="onlinePanel" class="online-panel glass glass-hover" hidden>
         <h3 id="onlinePanelTitle">Online Match</h3>
         <p id="onlinePanelHint" class="online-hint">Create a room as host or join with a match code.</p>
         <div class="online-create-row">
@@ -150,12 +150,12 @@
         <button id="setupRulesToggleBtn" class="btn ghost setup-rules-toggle" type="button" aria-controls="rulesPanel" aria-expanded="false">☰ RULES</button>
       </div>
 
-      <section id="rulesPanel" class="rules-panel" aria-live="polite">
+      <section id="rulesPanel" class="rules-panel glass glass-hover" aria-live="polite">
         <h3 id="rulesTitle">Rules of Commander Chess</h3>
         <p id="rulesSource" class="rules-source">Based on Commander Chess Rules (revised version).</p>
 
         <div id="rulesAccordion" class="rules-accordion">
-          <details class="rules-accordion-item" open>
+          <details class="rules-accordion-item glass glass-hover" open>
             <summary id="rulesSectionOverview">Overview & Goal</summary>
             <div class="rules-accordion-content">
               <p id="rulesGoal" class="rules-line">Goal: defeat the opponent's Commander by strategy and tactics.</p>
@@ -166,7 +166,7 @@
             </div>
           </details>
 
-          <details class="rules-accordion-item">
+          <details class="rules-accordion-item glass glass-hover">
             <summary id="rulesSectionBattlefield">Battlefield (11x12 + terrain)</summary>
             <div class="rules-accordion-content">
               <p id="rulesBoard" class="rules-line">Board: 11x12 with sea, river/reef, and land zones.</p>
@@ -176,7 +176,7 @@
             </div>
           </details>
 
-          <details class="rules-accordion-item">
+          <details class="rules-accordion-item glass glass-hover">
             <summary id="rulesSectionAllPieces">All Pieces</summary>
             <div class="rules-accordion-content">
               <p id="rulesPieces" class="rules-line">Pieces: land, air, and sea forces with different roles and interactions.</p>
@@ -197,7 +197,7 @@
             </div>
           </details>
 
-          <details class="rules-accordion-item">
+          <details class="rules-accordion-item glass glass-hover">
             <summary id="rulesSectionMovementCapture">Movement & Capture Rules</summary>
             <div class="rules-accordion-content">
               <p id="rulesMove" class="rules-line">Movement/capture: vertical and horizontal by default; some pieces leap, attack diagonally, or strike without occupying.</p>
@@ -209,7 +209,7 @@
             </div>
           </details>
 
-          <details class="rules-accordion-item">
+          <details class="rules-accordion-item glass glass-hover">
             <summary id="rulesSectionSpecialRules">Special Rules (Heroic, Transport, etc.)</summary>
             <div class="rules-accordion-content">
               <p id="rulesCarry" class="rules-line">Carrying: some pieces can transport others (piggyback) to create combined attacks.</p>
@@ -223,7 +223,7 @@
             </div>
           </details>
 
-          <details class="rules-accordion-item">
+          <details class="rules-accordion-item glass glass-hover">
             <summary id="rulesSectionWinModes">Win Conditions & Modes</summary>
             <div class="rules-accordion-content">
               <p id="rulesModes" class="rules-line">Modes: Full Battle (capture Commander), Marine/Air/Land Battle objectives.</p>
@@ -248,7 +248,7 @@
   </section>
 
   <section id="setupAboutModal" class="setup-about-modal" role="dialog" aria-modal="true" aria-labelledby="setupAboutTitle" aria-hidden="true">
-    <div class="setup-about-card" tabindex="-1">
+    <div class="setup-about-card glass glass-hover" tabindex="-1">
       <div class="setup-about-head">
         <h3 id="setupAboutTitle">About</h3>
         <button id="setupAboutCloseBtn" class="btn ghost setup-about-close" type="button">CLOSE</button>
@@ -264,7 +264,7 @@
   </section>
 
   <section id="rulesDocModal" class="rules-doc-modal" role="dialog" aria-modal="true" aria-labelledby="rulesDocTitle" aria-describedby="rulesDocHint" aria-hidden="true">
-    <div class="rules-doc-card" tabindex="-1">
+    <div class="rules-doc-card glass glass-hover" tabindex="-1">
       <div class="rules-doc-head">
         <h3 id="rulesDocTitle">Commander Chess Rulebook</h3>
         <button id="closeRulesDocBtn" class="btn ghost rules-doc-close" type="button">CLOSE</button>
@@ -275,8 +275,8 @@
     </div>
   </section>
 
-  <main class="app">
-    <header class="titlebar">
+  <main class="app app-content">
+    <header class="titlebar glass glass-hover">
       <div>
         <p id="mainKicker" class="kicker">Tactical Command Interface</p>
         <h1>COMMANDER CHESS</h1>
@@ -288,7 +288,7 @@
       </div>
     </header>
 
-    <section id="statusBar" class="statusbar status-idle">
+    <section id="statusBar" class="statusbar status-idle glass glass-hover">
       <span class="turn-dot" aria-hidden="true"></span>
       <div class="status-copy">
         <div id="status">Press START GAME</div>
@@ -302,7 +302,7 @@
     <div id="statusLive" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
     <section class="layout">
-      <section class="board-panel">
+      <section class="board-panel glass glass-hover">
         <div class="board-stage">
           <div id="yCoords" class="coord-y" aria-hidden="true"></div>
 
@@ -326,7 +326,7 @@
       </section>
 
       <aside class="side-panel">
-        <section class="card">
+        <section class="card glass glass-hover">
           <h2 id="controlDeckTitle">Control Deck</h2>
           <label class="field field-theme-prominent" for="themeSelect">
             <span id="themeFieldLabel">Theme</span>
@@ -359,7 +359,7 @@
           </div>
         </section>
 
-        <section class="card settings-card">
+        <section class="card settings-card glass glass-hover">
           <h2 id="settingsTitle">Experience</h2>
           <label class="field" for="boardSkinSelect">
             <span id="boardSkinLabel">Board Skin</span>
@@ -396,7 +396,7 @@
           <button id="pwaInstallBtn" class="btn ghost pwa-install-btn" type="button" hidden>ADD TO HOME SCREEN</button>
         </section>
 
-        <section class="card">
+        <section class="card glass glass-hover">
           <h2 id="telemetryTitle">Telemetry</h2>
           <dl class="stats">
             <div><dt id="statLabelYou">You</dt><dd id="statYou">-</dd></div>
@@ -408,7 +408,7 @@
           </dl>
         </section>
 
-        <section class="card">
+        <section class="card glass glass-hover">
           <h2 id="historyTitle">Move History</h2>
           <div class="history-nav">
             <button id="histPrevBtn" class="btn ghost history-btn" type="button" aria-label="Previous move">&lt;</button>
@@ -418,7 +418,7 @@
           <ol id="historyList" class="history-list"></ol>
         </section>
 
-        <section class="card">
+        <section class="card glass glass-hover">
           <h2 id="legendTitle">Legend</h2>
           <ul class="legend-list">
             <li><span class="swatch swatch-dot"></span><span id="legendLegalText">Legal destination</span></li>
@@ -429,7 +429,7 @@
           </ul>
         </section>
 
-        <section class="card">
+        <section class="card glass glass-hover">
           <h2 id="aboutTitle">About</h2>
           <ul class="about-list">
             <li><span id="aboutNameLabel">My name:</span> Pham Vo Tri Duc</li>
@@ -442,7 +442,7 @@
   </main>
 
   <section id="tutorialModal" class="tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle" aria-describedby="tutorialText" aria-hidden="true">
-    <div class="tutorial-card" tabindex="-1">
+    <div class="tutorial-card glass glass-hover" tabindex="-1">
       <div class="tutorial-head">
         <div>
           <p id="tutorialKicker" class="kicker">Interactive Tutorial</p>
@@ -468,7 +468,7 @@
   </section>
 
   <section id="postGameModal" class="postgame-modal" role="dialog" aria-modal="true" aria-labelledby="postGameTitle" aria-describedby="postGameResult" aria-hidden="true">
-    <div id="postGameCard" class="postgame-card" tabindex="-1">
+    <div id="postGameCard" class="postgame-card glass glass-hover" tabindex="-1">
       <p class="kicker">Battle Report</p>
       <h3 id="postGameTitle">Victory</h3>
       <p id="postGameResult" class="postgame-result">Battle complete.</p>
