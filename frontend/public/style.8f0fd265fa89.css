@@ -131,13 +131,14 @@ body {
 .app-bg {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .app-bg::before,
 .app-bg::after {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: -20%;
   background:
     radial-gradient(circle at 20% 25%, rgba(255, 255, 255, 0.10), transparent 45%),
