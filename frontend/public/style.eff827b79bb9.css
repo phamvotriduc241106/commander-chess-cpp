@@ -2412,6 +2412,148 @@ html[data-theme="dark"] .field-theme-prominent {
   font-weight: 700;
 }
 
+/* ===== Setup Window (Apple-style glass, setup only) ===== */
+:root {
+  --cc-bg: var(--bg, #f2f2f2);
+  --cc-surface: var(--surface, #ffffff);
+  --cc-text: var(--text, #1a1a1a);
+  --cc-accent: var(--accent, #d4af37);
+}
+
+#setupOverlay .cc-glass-window {
+  position: relative;
+  width: min(760px, calc(100% - 56px));
+  border-radius: 22px;
+  padding: 20px 20px 16px;
+  background: color-mix(in srgb, var(--cc-surface) 70%, transparent);
+  backdrop-filter: blur(26px) saturate(180%) contrast(112%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%) contrast(112%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 40px 120px rgba(0, 0, 0, 0.18),
+    0 10px 28px rgba(0, 0, 0, 0.12);
+  transform: translateZ(0);
+  isolation: isolate;
+  overflow: hidden;
+  overflow-y: visible;
+  max-height: none;
+}
+
+#setupOverlay .cc-glass-window::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.30),
+    rgba(255, 255, 255, 0.12) 35%,
+    transparent 75%
+  );
+  opacity: 0.95;
+  z-index: 0;
+}
+
+#setupOverlay .cc-glass-window::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 21px;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  z-index: 0;
+}
+
+#setupOverlay .cc-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  background-size: 140px 140px;
+  z-index: 0;
+}
+
+#setupOverlay .cc-glass-window > * {
+  position: relative;
+  z-index: 1;
+}
+
+#setupOverlay .cc-header {
+  padding: 10px 10px 12px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--cc-surface) 62%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20);
+  margin-bottom: 12px;
+}
+
+#setupOverlay .cc-header .title {
+  color: var(--cc-accent);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--cc-accent) 22%, transparent);
+  letter-spacing: 1px;
+}
+
+#setupOverlay .cc-header .label {
+  opacity: 0.75;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+#setupOverlay .cc-tile {
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--cc-surface) 58%, transparent);
+  backdrop-filter: blur(18px) saturate(165%);
+  -webkit-backdrop-filter: blur(18px) saturate(165%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+#setupOverlay .cc-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.26);
+  box-shadow:
+    0 16px 34px rgba(0, 0, 0, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+
+#setupOverlay .cc-primary {
+  border-color: color-mix(in srgb, var(--cc-accent) 22%, rgba(255, 255, 255, 0.18));
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.12),
+    0 0 22px color-mix(in srgb, var(--cc-accent) 16%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+#setupOverlay .cc-select,
+#setupOverlay .cc-glass-window select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--cc-surface) 55%, transparent);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  color: var(--cc-text);
+}
+
+#setupOverlay .cc-glass-window select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--cc-accent) 28%, rgba(255, 255, 255, 0.18));
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--cc-accent) 14%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
 .about-list a {
   color: var(--c-accent);
   font-weight: 700;
