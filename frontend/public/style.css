@@ -127,6 +127,101 @@ body {
   );
 }
 
+/* Reusable frosted glass surface */
+.glass {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.03)
+  );
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  color: var(--c-text-bright);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.glass:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* Apply glass effect to existing UI surfaces */
+.titlebar,
+.setup-card,
+.setup-about-card,
+.online-panel,
+.rules-panel,
+.rules-accordion-item,
+.rules-doc-card,
+.tutorial-card,
+.postgame-card,
+.statusbar,
+.board-panel,
+.card,
+#setupOverlay.show ~ .app .auth-panel,
+select,
+.theme-select {
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.03)
+  );
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.titlebar:hover,
+.setup-card:hover,
+.setup-about-card:hover,
+.online-panel:hover,
+.rules-panel:hover,
+.rules-accordion-item:hover,
+.rules-doc-card:hover,
+.tutorial-card:hover,
+.postgame-card:hover,
+.statusbar:hover,
+.board-panel:hover,
+.card:hover,
+#setupOverlay.show ~ .app .auth-panel:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .titlebar,
+  .setup-card,
+  .setup-about-card,
+  .online-panel,
+  .rules-panel,
+  .rules-accordion-item,
+  .rules-doc-card,
+  .tutorial-card,
+  .postgame-card,
+  .statusbar,
+  .board-panel,
+  .card,
+  #setupOverlay.show ~ .app .auth-panel,
+  select,
+  .theme-select {
+    background: var(--c-panel-soft);
+  }
+}
+
 .setup-overlay {
   position: fixed;
   inset: 0;
@@ -1861,6 +1956,23 @@ html[data-animations="off"] .move-fx-layer {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  .glass:hover,
+  .titlebar:hover,
+  .setup-card:hover,
+  .setup-about-card:hover,
+  .online-panel:hover,
+  .rules-panel:hover,
+  .rules-accordion-item:hover,
+  .rules-doc-card:hover,
+  .tutorial-card:hover,
+  .postgame-card:hover,
+  .statusbar:hover,
+  .board-panel:hover,
+  .card:hover,
+  #setupOverlay.show ~ .app .auth-panel:hover {
+    transform: none;
   }
 }
 
