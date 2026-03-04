@@ -1629,13 +1629,14 @@ select,
   margin-top: 12px;
   display: grid;
   grid-template-columns: minmax(140px, 220px) minmax(420px, 1fr) minmax(140px, 220px);
+  grid-template-areas: "left board right";
   gap: 12px;
   align-items: start;
   min-width: 920px;
 }
 
 .board-panel {
-  grid-column: 2;
+  grid-area: board;
   background: var(--c-highlight);
   border: 1px solid var(--c-shadow);
   border-radius: 14px;
@@ -2219,11 +2220,11 @@ html[data-animations="off"] .move-fx-layer {
 }
 
 .side-panel-left {
-  grid-column: 1;
+  grid-area: left;
 }
 
 .side-panel-right {
-  grid-column: 3;
+  grid-area: right;
 }
 
 .card {
@@ -2730,6 +2731,7 @@ html[data-theme="dark"] .field-theme-prominent {
 @media (max-width: 1220px) {
   .layout {
     grid-template-columns: minmax(120px, 190px) minmax(400px, 1fr) minmax(120px, 190px);
+    grid-template-areas: "left board right";
     min-width: 860px;
   }
   .side-panel { display: flex; }
@@ -2742,7 +2744,13 @@ html[data-theme="dark"] .field-theme-prominent {
 }
 
 @media (max-width: 620px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "board"
+      "left"
+      "right";
+  }
   .board-panel,
   .side-panel-left,
   .side-panel-right {
