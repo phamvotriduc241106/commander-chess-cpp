@@ -328,9 +328,7 @@ static const int WIN_H    = TITLE_H + STATUS_H + BH;
 
 struct Color { uint8_t r,g,b,a; };
 static Color C_LAND      = {0xf0,0xe8,0xc0,0xff};
-static Color C_SEA       = {0xf0,0xe8,0xc0,0xff};
 static Color C_RIVER     = {0x88,0xd0,0xf0,0xff};
-static Color C_SEA2      = {0xf0,0xe8,0xc0,0xff};
 static Color C_GRID      = {0x8a,0x7a,0x50,0xff};
 static Color C_SEL       = {0xff,0xd7,0x00,0xff};
 static Color C_MOVE      = {0x44,0xcc,0x66,0xaa};
@@ -340,11 +338,8 @@ static Color C_BG        = {0x0d,0x11,0x17,0xff};  // dark navy background
 static Color C_PANEL     = {0x11,0x18,0x22,0xff};  // dark panel background
 // UI chrome colors (not used on board/pieces)
 static Color C_GREEN     = {0x58,0xc8,0x8c,0xff};  // Duolingo green accent
-static Color C_GREEN2    = {0x43,0xb0,0x7a,0xff};  // darker green
 static Color C_RED_DOT   = {0xdc,0x35,0x45,0xff};  // red player dot
 static Color C_BLUE_DOT  = {0x3b,0x82,0xf6,0xff};  // blue player dot
-static Color C_TEXT_DIM  = {0x90,0xa4,0xae,0xff};  // muted text
-static Color C_TEXT_BRT  = {0xe8,0xed,0xf2,0xff};  // bright text
 static Color C_AMBER     = {0xfb,0xbf,0x24,0xff};  // amber/gold accent
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -931,12 +926,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         if (!on_board(c, r)) return -1;
         return ctx.sq_to_piece[sq_index(c, r)];
     };
-    auto enemy_piece_at = [&](int c, int r) -> const Piece* {
-        int pi = piece_index_at(c, r);
-        if (pi < 0) return nullptr;
-        const Piece& p = (*ctx.pieces)[pi];
-        return player_idx(p.player) == me ? nullptr : &p;
-    };
+    // Removed unused lambda: auto enemy_piece_at = [&](int c, int r) -> const Piece* { ... };
     auto can_stack_at = [&](int c, int r) -> bool {
         int pi = piece_index_at(c, r);
         if (pi < 0) return false;
@@ -1278,7 +1268,7 @@ static bool square_capturable_by_player(const PieceList& pieces, int col, int ro
     if (!on_board(col, row)) return false;
     int target_sq = sq_index(col, row);
     MoveGenContext ctx = build_movegen_context(pieces);
-    for (const auto& p : pieces) {
+    for (auto& p : pieces) {
         if (p.player != by_player) continue;
         if (!on_board(p.col, p.row)) continue;
         BB132 bb = get_move_mask_bitboard(p, ctx);
@@ -2321,7 +2311,7 @@ static const EngineConfig& get_engine_config() {
 // Contiguous TT arena with configurable size
 static size_t    g_tt_count = 0;      // number of clusters
 static size_t    g_tt_mask  = 0;      // count - 1 (power of 2)
-static TTCluster* g_TT      = nullptr;
+static TTCluster* g_TT       = nullptr;
 static uint8_t   g_tt_age   = 0;
 static void*     g_tt_arena = nullptr;
 static size_t    g_tt_arena_bytes = 0;
@@ -2490,22 +2480,6 @@ static SearchState make_search_state(const PieceList& pieces, const std::string&
     return st;
 }
 
-static void debug_validate_state_or_abort(const PieceList& pieces,
-                                          const std::string& last_mover,
-                                          const char* where) {
-#ifdef DEBUG
-    std::string reason;
-    if (!validate_state_for_sim(pieces, last_mover, &reason)) {
-        std::cerr << "[DEBUG] " << where << " produced invalid state: " << reason << "\n";
-        std::abort();
-    }
-#else
-    (void)pieces;
-    (void)last_mover;
-    (void)where;
-#endif
-}
-
 // === CHANGED ===
 static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
                                        const std::string& cpu_player, UndoMove& u) {
@@ -2535,7 +2509,6 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
     st.atk.valid = false;
     st.rebuild_caches();
-    debug_validate_state_or_abort(st.pieces, u.turn_before, "make_move_inplace");
     return true;
 }
 
@@ -2578,7 +2551,6 @@ static void unmake_move_inplace(SearchState& st, const UndoMove& u) {
     st.pieces = u.snapshot_pieces;
     st.atk.valid = false;
     st.rebuild_caches();
-    debug_validate_state_or_abort(st.pieces, opp(st.turn), "unmake_move_inplace");
 }
 
 // === CHANGED ===
@@ -3794,6 +3766,14 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
     score += (my_land - opp_land) * 220;
     if (my_land <= 2)  score -= 350;
     if (opp_land <= 2) score += 350;
+
+    score += (my_aa - opp_aa) * 150;
+    if (my_aa == 2)  score += 60;
+    if (opp_aa == 2) score -= 60;
+
+    score += (my_ms - opp_ms) * 200;
+    if (my_ms == 2)  score += 80;
+    if (opp_ms == 2) score -= 80;
 
     // ── Tempo & contempt ─────────────────────────────────────────────────
     if (side_to_move)
