@@ -4,10 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Commander Chess</title>
-  <meta name="description" content="Commander Chess is a modern strategy board game with land, air, and sea forces. Play against CPU or local multiplayer in your browser." />
+  <meta name="description" content="Commander Chess is a modern military strategy board game with land, air, and sea forces. Play against AI (CPU) opponents at multiple difficulty levels, local multiplayer, or online P2P matches — all in your browser." />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="Commander Chess" />
-  <meta property="og:description" content="Play Commander Chess in your browser with local CPU or local multiplayer modes." />
+  <meta property="og:description" content="Play Commander Chess — a military strategy board game with land, air, and sea forces. Challenge the AI at multiple difficulties, play local multiplayer, or battle online." />
   <meta property="og:url" content="https://commander-chess-cpp-1771534802.web.app/" />
   <meta name="theme-color" content="#000000" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@600;700&family=Rajdhani:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/style.1528ea6fa2d8.css" />
+  <link rel="stylesheet" href="/style.34a6f643d441.css" />
 </head>
 <body class="app-bg">
   <section id="setupOverlay" class="setup-overlay">
@@ -313,7 +313,7 @@
 
           <div class="board-frame">
             <div id="board" class="board" role="grid" aria-rowcount="12" aria-colcount="11" aria-label="Commander chess board"></div>
-            <div id="aiThinkingOverlay" class="ai-thinking-overlay" hidden>
+            <div id="aiThinkingOverlay" class="ai-thinking-overlay" hidden role="status" aria-live="polite">
               <span class="ai-thinking-spinner" aria-hidden="true"></span>
               <span id="aiThinkingLabel">AI is thinking...</span>
             </div>
@@ -330,12 +330,12 @@
         </div>
       </section>
 
-      <aside class="side-panel side-panel-left">
+      <nav class="side-panel side-panel-left" aria-label="Game controls">
         <section class="card glass glass-hover">
           <h2 id="controlDeckTitle">Control Deck</h2>
           <label class="field field-theme-prominent" for="themeSelect">
             <span id="themeFieldLabel">Theme</span>
-            <select id="themeSelect" class="theme-select">
+            <select id="themeSelect" class="theme-select" aria-label="Theme selection">
               <option value="system">System</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
@@ -343,14 +343,14 @@
           </label>
           <label class="field" for="sideSelect">
             <span id="sideFieldLabel">Player Side</span>
-            <select id="sideSelect">
+            <select id="sideSelect" aria-label="Player side selection">
               <option value="red">Play Red</option>
               <option value="blue">Play Blue</option>
             </select>
           </label>
           <label class="field" for="difficultySelect">
             <span id="difficultyFieldLabel">Difficulty</span>
-            <select id="difficultySelect">
+            <select id="difficultySelect" aria-label="Difficulty level selection">
               <option value="easy">Beginner</option>
               <option value="medium">Intermediate</option>
               <option value="hard">Expert</option>
@@ -400,9 +400,9 @@
           </label>
           <button id="pwaInstallBtn" class="btn ghost pwa-install-btn" type="button" hidden>ADD TO HOME SCREEN</button>
         </section>
-      </aside>
+      </nav>
 
-      <aside class="side-panel side-panel-right">
+      <aside class="side-panel side-panel-right" aria-label="Game information">
         <section class="card glass glass-hover">
           <h2 id="telemetryTitle">Telemetry</h2>
           <dl class="stats">
@@ -446,6 +446,9 @@
         </section>
       </aside>
     </section>
+    <footer class="sr-only">
+      <p>Commander Chess by Pham Vo Tri Duc. Built with C++ (WASM engine) and vanilla HTML/CSS/JS.</p>
+    </footer>
   </main>
 
   <section id="tutorialModal" class="tutorial-modal" role="dialog" aria-modal="true" aria-labelledby="tutorialTitle" aria-describedby="tutorialText" aria-hidden="true">
