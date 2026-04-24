@@ -109,10 +109,10 @@ static void apply_difficulty_to_state(GameState& state) {
         cfg.max_depth = 4;
         cfg.time_limit_ms = 2500;
     } else if (state.difficulty == "hard") {
-        state.bot_depth = 8;
-        state.bot_time_limit = 8.0;
-        cfg.max_depth = 8;
-        cfg.time_limit_ms = 8000;
+        state.bot_depth = 10;
+        state.bot_time_limit = 10.0;
+        cfg.max_depth = 10;
+        cfg.time_limit_ms = 10000;
     } else {
         state.bot_depth = 6;
         state.bot_time_limit = 3.0;

@@ -393,7 +393,7 @@ static inline int kind_index_early(const std::string& k) {
         default: return 0;
     }
 }
-static const int PIECE_VALUE_FAST[11] = {1000, 0, 100, 100, 200, 100, 300, 100, 200, 400, 800};
+static const int PIECE_VALUE_FAST[11] = {1000, 0, 110, 100, 200, 100, 300, 100, 200, 400, 800};
 static inline int piece_value_fast(const std::string& kind) {
     int ki = kind_index_early(kind);
     return (ki >= 0 && ki < 11) ? PIECE_VALUE_FAST[ki] : 0;
@@ -1886,7 +1886,7 @@ static inline uint64_t zobrist_piece_key(const Piece& p);
 
 static int quick_piece_unit_score(const Piece& p) {
     int val = piece_value_fast(p.kind);
-    if (p.hero) val = (int)(val * 1.5f);
+    if (p.hero) val = (int)(val * 1.6f);
     // Fast positional component for incremental eval.
     val += get_pst(p.kind, p.player, p.col, p.row) * 2;
     return val;
@@ -2584,6 +2584,7 @@ static const int MAX_PLY = 32;
 
 // Board dimensions for history indexing: [player][kind][col][row]
 static const int H_PLAYERS = 2, H_KINDS = 11, H_COLS = 11, H_ROWS = 12;
+static const int MAX_CONT_HISTORY = 127;
 
 // ── Per-thread search data for Lazy SMP ──────────────────────────────────
 struct alignas(64) ThreadData {
@@ -2592,7 +2593,7 @@ struct alignas(64) ThreadData {
     // Flat history: [player][kind_index][col][row] — O(1) access, memset-clearable
     int history[H_PLAYERS][H_KINDS][H_COLS][H_ROWS];
     // Flat continuation history: [prev_col][prev_row][kind_index][col][row]
-    int16_t cont_history[H_COLS][H_ROWS][H_KINDS][H_COLS][H_ROWS];
+    int8_t cont_history[H_COLS][H_ROWS][H_KINDS][H_COLS][H_ROWS];
     MoveTriple pv[MAX_PLY][MAX_PLY];
     int pv_len[MAX_PLY];
     MoveTriple counter[11][12];
@@ -2612,7 +2613,7 @@ struct alignas(64) ThreadData {
 static MoveTriple g_killers[MAX_PLY][2];
 static bool g_killers_set[MAX_PLY][2];
 static int g_history[H_PLAYERS][H_KINDS][H_COLS][H_ROWS];
-static int16_t g_cont_history[H_COLS][H_ROWS][H_KINDS][H_COLS][H_ROWS];
+static int8_t g_cont_history[H_COLS][H_ROWS][H_KINDS][H_COLS][H_ROWS];
 
 // ── Correction History forward declarations (full implementation below SEE) ─
 static const int CORR_HIST_SIZE     = 16384;
@@ -2748,10 +2749,11 @@ static int td_cont_history_score(const ThreadData& td, const MoveTriple* prev, i
 static void td_update_cont_history(ThreadData& td, const MoveTriple* prev, int ki, int dc, int dr, int depth) {
     if (!prev || !on_board(prev->dc, prev->dr)) return;
     if (ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
-    int bonus = std::min(depth * depth, 1600);
+    int bonus = std::min(32, std::max(1, depth + depth * depth / 8));
     int v = (int)td.cont_history[prev->dc][prev->dr][ki][dc][dr];
-    v += bonus - v * std::abs(bonus) / 32000;
-    td.cont_history[prev->dc][prev->dr][ki][dc][dr] = (int16_t)std::max(-32000, std::min(32000, v));
+    v += bonus - v * std::abs(bonus) / MAX_CONT_HISTORY;
+    td.cont_history[prev->dc][prev->dr][ki][dc][dr] =
+        (int8_t)std::max(-MAX_CONT_HISTORY, std::min(MAX_CONT_HISTORY, v));
 }
 
 static int history_score(int pl, int ki, int dc, int dr) {
@@ -2786,10 +2788,11 @@ static int cont_history_score(const MoveTriple* prev, int ki, int dc, int dr) {
 static void update_cont_history(const MoveTriple* prev, int ki, int dc, int dr, int depth) {
     if (!prev || !on_board(prev->dc, prev->dr)) return;
     if (ki<0||ki>=H_KINDS||dc<0||dc>=H_COLS||dr<0||dr>=H_ROWS) return;
-    int bonus = std::min(depth * depth, 1600);
+    int bonus = std::min(32, std::max(1, depth + depth * depth / 8));
     int v = (int)g_cont_history[prev->dc][prev->dr][ki][dc][dr];
-    v += bonus - v * std::abs(bonus) / 32000;
-    g_cont_history[prev->dc][prev->dr][ki][dc][dr] = (int16_t)std::max(-32000, std::min(32000, v));
+    v += bonus - v * std::abs(bonus) / MAX_CONT_HISTORY;
+    g_cont_history[prev->dc][prev->dr][ki][dc][dr] =
+        (int8_t)std::max(-MAX_CONT_HISTORY, std::min(MAX_CONT_HISTORY, v));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3043,7 +3046,7 @@ static int score_move_for_order(const MoveTriple& m,
     }
     // 2b. Counter move for previous move context
     else if (counter_move && same_move(*counter_move, m))
-        score = 95000;
+        score = 110000;
     // 3. Killer moves
     else if (ply<MAX_PLY && (td ? td->killers_set[ply][0] : g_killers_set[ply][0]) &&
                (td ? td->killers[ply][0] : g_killers[ply][0]).pid==m.pid &&
@@ -3058,10 +3061,11 @@ static int score_move_for_order(const MoveTriple& m,
     // 4. History heuristic for quiet moves
     else {
         int ki = kind_index(piece->kind);
-        score = td ? td_history_score(*td, hist_pl, ki, m.dc, m.dr)
-                   : history_score(hist_pl, ki, m.dc, m.dr);
-        score += td ? td_cont_history_score(*td, prev_move, ki, m.dc, m.dr)
-                    : cont_history_score(prev_move, ki, m.dc, m.dr);
+        int hist = td ? td_history_score(*td, hist_pl, ki, m.dc, m.dr)
+                      : history_score(hist_pl, ki, m.dc, m.dr);
+        int cont = td ? td_cont_history_score(*td, prev_move, ki, m.dc, m.dr)
+                      : cont_history_score(prev_move, ki, m.dc, m.dr);
+        score = hist + cont * 2;
     }
     return score;
 }
@@ -3327,8 +3331,8 @@ static bool low_depth_special_outcome(SearchState& st, const std::string& perspe
 }
 
 // ── Static evaluation (Phase-Interpolated) ────────────────────────────────
-// Quadratic attacker penalty table: more attackers = exponentially worse
-static const int CMD_ATTACKER_PENALTY[] = {0, 40, 120, 260, 450, 700, 1000};
+// Flatter commander pressure curve improves stability in tactically busy positions.
+static const int CMD_ATTACKER_PENALTY[] = {0, 30, 90, 180, 300, 460, 660};
 
 enum class EvalBackendKind { CPU, WEBGPU };
 static EvalBackendKind g_eval_backend = EvalBackendKind::CPU;
@@ -3435,7 +3439,7 @@ static int side_advanced_threat_score(const PieceList& pieces,
         if (ep.id >= 0 && ep.id < (int)payload_count.size() && payload_count[ep.id] > 0) {
             weight += 60 * payload_count[ep.id];
         }
-        if (def == 0) score += weight + val / 4;
+        if (def == 0) score += weight + val / 3;
         else if (atk > def) score += weight / 2 + (atk - def) * 24;
         else if (atk == def && val >= 200) score += weight / 4;
     }
@@ -3960,13 +3964,12 @@ static bool g_lmr_init = false;
 
 static void init_lmr_table() {
     if (g_lmr_init) return;
-    // Stockfish 18 LMR formula: reduction ≈ ln(depth) * ln(moves) / 2.0
-    // (slightly more aggressive than the old /2.25; improves search speed
-    //  at depth ≥ 6 where later moves are almost always sub-optimal)
+    // Slightly less conservative than the stock /2.0 adaptation here to
+    // keep more late moves at useful depth on modern CPUs.
     for (int d = 0; d < 64; d++) {
         for (int m = 0; m < 64; m++) {
             if (d == 0 || m == 0) { g_lmr_table[d][m] = 0; continue; }
-            g_lmr_table[d][m] = (int)(0.50 + std::log(d) * std::log(m) / 2.0);
+            g_lmr_table[d][m] = (int)(0.50 + std::log(d) * std::log(m) / 1.8);
             if (g_lmr_table[d][m] < 0) g_lmr_table[d][m] = 0;
         }
     }
@@ -4135,7 +4138,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
     // ── Razoring (extended to depth 1-3) ─────────────────────────────────
     if (pruning_safe && !pv_node && depth <= 3) {
-        int razor_margin = 200 + 180 * (depth - 1);
+        int razor_margin = 160 + 140 * (depth - 1);
         if (node_is_max && static_eval + razor_margin <= alpha) {
             if (depth <= 1) return quiesce(st, alpha, beta, cpu_player, cpu_player);
             int razor_val = quiesce(st, alpha, beta, cpu_player, cpu_player);
@@ -4185,12 +4188,10 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                                   commander_attackers_cached(st, opp(st.turn));
                 bool volatile_pos = (cmd_tension > 0);
 
-                int R = 2;
-                if (depth >= 10 && eval_margin >= 320) R = 4;
-                else if (depth >= 7 && eval_margin >= 140) R = 3;
+                int R = 2 + (depth >= 8 ? 1 : 0) + (eval_margin >= 200 ? 1 : 0);
 
                 // In complex/volatile or low-material positions use conservative reduction.
-                if (volatile_pos || stm_pieces <= 7) R = 2;
+                if (volatile_pos || stm_pieces <= 7) R = std::min(R, 2);
                 if (R > depth - 1) R = depth - 1;
 
                 UndoMove nu;
@@ -4295,7 +4296,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
         // ── Late Move Pruning (LMP) — improving-aware thresholds ─────────
         if (is_quiet && depth <= 4 && !pv_node) {
-            int lmp_base = improving ? 5 : 3;
+            int lmp_base = improving ? 6 : 4;
             int lmp_threshold = lmp_base + depth * depth;
             if (move_index >= lmp_threshold && pre_cpu_cmd_atk == 0 && pre_opp_cmd_atk == 0) {
                 move_index++;
@@ -4320,7 +4321,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
         // ── Futility Pruning (both sides, depth 1-3) ────────────────────
         if (is_quiet && !pv_node && depth <= 3 && pre_cpu_cmd_atk == 0 && pre_opp_cmd_atk == 0) {
-            int fut_margin = (improving ? 130 : 170) * depth + 80;
+            int fut_margin = (improving ? 160 : 200) * depth + 80;
             if (node_is_max && static_eval + fut_margin <= alpha) {
                 move_index++;
                 continue;
@@ -4383,7 +4384,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 // Negative extension: TT reports another move scores >= beta here,
                 // so this non-best move is unlikely to matter — search it less.
                 if (tt_val >= beta)       se_extension = -2;
-                else if (tt_val >= beta - 60) se_extension = -1;
+                else if (tt_val >= beta - 30) se_extension = -1;
             }
         }
 
@@ -4580,7 +4581,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     // computed from the opponent's perspective before storing.
     if (flag == TT_EXACT && depth >= 1 && std::abs(val) < 20000) {
         int corr_val = node_is_max ? val : -val;
-        int corr_static = node_is_max ? raw_static_eval : -raw_static_eval;
+        int corr_static = node_is_max ? static_eval : -static_eval;
         update_correction_history(h, st.pieces, node_is_max ? cpu_player : opp(cpu_player),
                                   depth, corr_val, corr_static);
     }
@@ -4607,6 +4608,11 @@ static constexpr float MCTS_VIRTUAL_LOSS = 0.35f;
 static constexpr int   MCTS_MAX_THREADS = 8;
 static constexpr int   MCTS_EVAL_BATCH_CPU = 16;
 static constexpr int   MCTS_EVAL_BATCH_WEBGPU = 128;
+
+static float mcts_dynamic_cpuct(int visits) {
+    float v = (float)std::max(1, visits);
+    return MCTS_CPUCT / std::sqrt(1.0f + std::log(v + 1.0f) / 100.0f);
+}
 
 // ── Heuristic policy prior (simulates NNUE policy head) ──────────────────
 // Returns a softmax probability vector over the given moves.
@@ -4689,6 +4695,11 @@ static std::vector<float> mcts_policy_priors(const AllMoves& moves,
                 int dist_from = std::abs(pieces[atk_idx].col - my_cmd->col)
                               + std::abs(pieces[atk_idx].row - my_cmd->row);
                 if (dist_to < dist_from) s += 40.0f; // moving toward own commander = shelter
+                else if (dist_to > dist_from && dist_from <= 2) s -= 28.0f;
+            } else if (atk_idx >= 0) {
+                int dist_from = std::abs(pieces[atk_idx].col - my_cmd->col)
+                              + std::abs(pieces[atk_idx].row - my_cmd->row);
+                if (dist_from <= 2 && dist_to >= dist_from + 2) s -= 22.0f;
             }
         }
 
@@ -4850,12 +4861,13 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
         if (children.empty()) return false;
 
         float sqrt_root = std::sqrt((float)std::max(1, root_visits));
+        float root_cpuct = mcts_dynamic_cpuct(root_visits);
         int l1_idx = 0;
         float best_puct = -1e18f;
         for (int i = 0; i < (int)children.size(); i++) {
             auto& c = children[i];
             float q = c.q_with_virtual_loss();
-            float u = MCTS_CPUCT * c.prior * sqrt_root /
+            float u = root_cpuct * c.prior * sqrt_root /
                       (1.0f + (float)c.visits_with_virtual_loss());
             float puct = q + u;
             if (puct > best_puct) { best_puct = puct; l1_idx = i; }
@@ -4887,12 +4899,13 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
 
             if (!l1.children.empty()) {
                 float sqrt_l1 = std::sqrt((float)std::max(1, l1.visits_with_virtual_loss()));
+                float l1_cpuct = mcts_dynamic_cpuct(l1.visits_with_virtual_loss());
                 int l2_idx = 0;
                 float best_puct2 = -1e18f;
                 for (int j = 0; j < (int)l1.children.size(); j++) {
                     auto& c2 = l1.children[j];
                     float q2 = c2.q_with_virtual_loss();
-                    float u2 = MCTS_CPUCT * c2.prior * sqrt_l1 /
+                    float u2 = l1_cpuct * c2.prior * sqrt_l1 /
                                (1.0f + (float)c2.visits_with_virtual_loss());
                     // q2 is stored from opponent perspective at level-2.
                     float puct2 = q2 + u2;
@@ -4917,11 +4930,19 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
         (void)tid;
 
         const bool use_webgpu = (active_eval_backend() == EvalBackendKind::WEBGPU);
-        int eval_batch_size = use_webgpu ? MCTS_EVAL_BATCH_WEBGPU : MCTS_EVAL_BATCH_CPU;
-        eval_batch_size = std::max(1, std::min(eval_batch_size, (int)children.size()));
+        const int eval_batch_cap = use_webgpu ? MCTS_EVAL_BATCH_WEBGPU : MCTS_EVAL_BATCH_CPU;
 
         while (!time_up()) {
             if (stop_flag && stop_flag->load(std::memory_order_relaxed)) break;
+
+            int eval_batch_size = std::max(1, std::min(eval_batch_cap, (int)children.size()));
+            if (!use_webgpu) {
+                auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    deadline - std::chrono::steady_clock::now()).count();
+                if (remaining_ms < 150) eval_batch_size = std::min(eval_batch_size, 2);
+                else if (remaining_ms < 350) eval_batch_size = std::min(eval_batch_size, 4);
+                else if (remaining_ms < 800) eval_batch_size = std::min(eval_batch_size, 8);
+            }
 
             std::vector<SelectionPath> selected;
             selected.reserve((size_t)eval_batch_size);
@@ -5120,6 +5141,9 @@ static bool opening_book_pick(const SearchState& st, const std::string& cpu_play
     append_book_move_from_square(book, st, cpu_player, 5, prow(7), 5, prow(6));
     append_book_move_from_square(book, st, cpu_player, 4, prow(8), 4, prow(7));
     append_book_move_from_square(book, st, cpu_player, 6, prow(8), 6, prow(7));
+    append_book_move_from_square(book, st, cpu_player, 4, prow(8), 5, prow(8));
+    append_book_move_from_square(book, st, cpu_player, 6, prow(8), 5, prow(8));
+    append_book_move_from_square(book, st, cpu_player, 1, prow(10), 2, prow(10));
 
     bool found = false;
     int best_score = -99999999;
@@ -5189,6 +5213,7 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
 
     for (int cur_depth = 1; cur_depth <= max_depth; cur_depth++) {
         if (time_up()) break;
+        uint64_t nodes_before_depth = g_nodes.load(std::memory_order_relaxed);
 
         // ── Aspiration Windows ────────────────────────────────────────────
         // Start with a tight window (δ=12 at depth≥5, δ=40 earlier).
@@ -5314,6 +5339,12 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
                 std::chrono::steady_clock::now() > soft_deadline) {
                 break;
             }
+            uint64_t nodes_this_depth =
+                g_nodes.load(std::memory_order_relaxed) - nodes_before_depth;
+            uint64_t expected = 1000ULL << std::min(cur_depth, 20);
+            if (cur_depth >= 4 && nodes_this_depth > (expected * 9) / 10) {
+                break;
+            }
         }
     }
     return {true, best};
@@ -5350,6 +5381,7 @@ struct SMPShared {
     std::atomic<int>    last_best_pid{-1};
     std::atomic<int>    last_best_dc{-1};
     std::atomic<int>    last_best_dr{-1};
+    std::atomic<uint64_t> last_best_change_nodes{0};
 };
 
 static void smp_worker(int thread_id, const PieceList& pieces,
@@ -5533,19 +5565,15 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                     shared.best_move_stability.fetch_add(1, std::memory_order_relaxed);
                 } else {
                     shared.best_move_stability.store(0, std::memory_order_relaxed);
-                    // ── SF18-style node-count time extension ─────────────────
-                    // When the best move changes, the position is tactically
-                    // complex: extend the soft deadline by 25% (capped at hard).
-                    // This mirrors Stockfish 18's "bestMoveChanges" time manager.
-                    if (cur_depth >= 4) {
+                    uint64_t current_nodes = g_nodes.load(std::memory_order_relaxed);
+                    uint64_t prev_nodes =
+                        shared.last_best_change_nodes.exchange(current_nodes, std::memory_order_relaxed);
+                    if (cur_depth >= 4 && prev_nodes > 0 &&
+                        current_nodes > prev_nodes + prev_nodes / 5) {
                         std::lock_guard<EngineMutex> lk(shared.best_mutex);
-                        auto now = std::chrono::steady_clock::now();
-                        auto remaining = shared.deadline - now;
-                        auto extension = remaining / 4;  // 25% of remaining time
-                        auto new_soft = shared.soft_deadline + extension;
-                        // Never push soft past hard limit
-                        if (new_soft < shared.deadline)
-                            shared.soft_deadline = new_soft;
+                        auto extension = std::chrono::milliseconds(200);
+                        if (shared.soft_deadline + extension < shared.deadline)
+                            shared.soft_deadline += extension;
                     }
                 }
                 shared.last_best_pid.store(best.pid, std::memory_order_relaxed);
@@ -5773,7 +5801,7 @@ struct Game {
             cfg.max_depth=cpu_depth;
             cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
         } else {
-            cpu_depth=8; cpu_time_limit=8.0;
+            cpu_depth=10; cpu_time_limit=10.0;
             cfg.use_mcts=true;
             cfg.max_depth=cpu_depth;
             cfg.time_limit_ms=(int)(cpu_time_limit * 1000.0);
