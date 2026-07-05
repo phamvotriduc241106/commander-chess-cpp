@@ -29,3 +29,8 @@ sim8h_*/
 sim*_results.tar.gz
 *.log
 sim_baseline.txt
+
+# Hashed frontend build assets
+frontend/public/app.*.js
+frontend/public/style.*.css
+

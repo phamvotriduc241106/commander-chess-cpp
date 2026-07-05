@@ -3166,8 +3166,10 @@ function onCellKeyDown(ev) {
   if (target) target.focus();
 }
 
+let persistentCells = [];
+let lastFlippedState = null;
+
 function drawBoardNow() {
-  boardEl.innerHTML = '';
   const drawState = currentViewState();
   if (!drawState) return;
 
@@ -3188,96 +3190,140 @@ function drawBoardNow() {
   const fxToKey = fx && fx.to ? key(fx.to.c, fx.to.r) : '';
   const fxFromKey = fx && fx.from ? key(fx.from.c, fx.from.r) : '';
 
-  const frag = document.createDocumentFragment();
+  // Initialize cells once if they don't exist, or if the board was flipped
+  if (boardEl.children.length === 0 || lastFlippedState !== boardFlipped) {
+    boardEl.innerHTML = '';
+    persistentCells = [];
+    lastFlippedState = boardFlipped;
+    const frag = document.createDocumentFragment();
 
-  for (let viewRow = 0; viewRow < ROWS; viewRow++) {
-    for (let viewCol = 0; viewCol < COLS; viewCol++) {
-      const boardPos = boardCoordFromView(viewCol, viewRow);
-      const c = boardPos.c;
-      const r = boardPos.r;
-      const cell = document.createElement('button');
-      cell.type = 'button';
-      cell.className = `cell ${terrainClass(c, r)}`;
-      if (isReef(c, r)) cell.classList.add('reef');
-      cell.dataset.col = String(c);
-      cell.dataset.row = String(r);
-      cell.dataset.viewCol = String(viewCol);
-      cell.dataset.viewRow = String(viewRow);
-      cell.setAttribute('role', 'gridcell');
-      cell.setAttribute('aria-colindex', String(viewCol + 1));
-      cell.setAttribute('aria-rowindex', String(viewRow + 1));
-
-      const piece = pieceAt(c, r, drawState);
-      const legal = legalSet.has(key(c, r));
-      const showLegal = hintsEnabled && legal;
-      let legalCapture = false;
-
-      if (piece && piece.id === selectedPid) {
-        cell.classList.add('selected');
+    for (let viewRow = 0; viewRow < ROWS; viewRow++) {
+      for (let viewCol = 0; viewCol < COLS; viewCol++) {
+        const boardPos = boardCoordFromView(viewCol, viewRow);
+        const c = boardPos.c;
+        const r = boardPos.r;
+        const cell = document.createElement('button');
+        cell.type = 'button';
+        cell.className = `cell ${terrainClass(c, r)}`;
+        if (isReef(c, r)) cell.classList.add('reef');
+        cell.dataset.col = String(c);
+        cell.dataset.row = String(r);
+        cell.dataset.viewCol = String(viewCol);
+        cell.dataset.viewRow = String(viewRow);
+        cell.setAttribute('role', 'gridcell');
+        cell.setAttribute('aria-colindex', String(viewCol + 1));
+        cell.setAttribute('aria-rowindex', String(viewRow + 1));
+        cell.addEventListener('click', onCellClick);
+        cell.addEventListener('keydown', onCellKeyDown);
+        frag.appendChild(cell);
+        persistentCells.push({ cell, c, r, viewCol, viewRow });
       }
+    }
+    boardEl.appendChild(frag);
+  }
 
-      if (legal) {
-        const target = pieceAt(c, r, drawState);
-        if (target && selectedPiece && target.player !== selectedPiece.player) {
-          legalCapture = true;
-          if (showLegal) cell.classList.add('legal-capture');
-        } else if (showLegal) {
-          cell.classList.add('legal-move');
-        }
-      }
+  // Update existing cells dynamically to avoid browser reflow and garbage collection
+  for (let i = 0; i < persistentCells.length; i++) {
+    const item = persistentCells[i];
+    const cell = item.cell;
+    const c = item.c;
+    const r = item.r;
 
-      const isLastTarget = drawState.has_last_move && drawState.last_move.dc === c && drawState.last_move.dr === r;
-      const isLastOrigin = !!(markerFrom && markerFrom.c === c && markerFrom.r === r);
+    const baseClass = `cell ${terrainClass(c, r)}${isReef(c, r) ? ' reef' : ''}`;
+    let className = baseClass;
 
-      if (isLastTarget) {
-        cell.classList.add('last-target');
-        cell.classList.add(drawState.last_move_player === 'red' ? 'last-red' : 'last-blue');
-      }
-      if (isLastOrigin) {
-        cell.classList.add('last-origin');
-        cell.classList.add(drawState.last_move_player === 'red' ? 'last-red' : 'last-blue');
-      }
+    const piece = pieceAt(c, r, drawState);
+    const legal = legalSet.has(key(c, r));
+    const showLegal = hintsEnabled && legal;
+    let legalCapture = false;
 
-      const coordKey = key(c, r);
-      if (hint && coordKey === hintToKey) cell.classList.add('hint-target');
-      if (hint && hintFrom && coordKey === hintFromKey) cell.classList.add('hint-origin');
-      const isFxTo = coordKey === fxToKey;
-      const isFxFrom = coordKey === fxFromKey;
-      if (isFxTo) {
-        cell.classList.add('fx-to');
-        cell.classList.add(fx && fx.player === 'blue' ? 'fx-blue' : 'fx-red');
-        if (fx && fx.capture) cell.classList.add('fx-impact');
-      }
-      if (isFxFrom) {
-        cell.classList.add('fx-from');
-      }
+    if (piece && piece.id === selectedPid) {
+      className += ' selected';
+    }
 
-      if (piece) {
+    if (legal) {
+      const target = pieceAt(c, r, drawState);
+      if (target && selectedPiece && target.player !== selectedPiece.player) {
+        legalCapture = true;
+        if (showLegal) className += ' legal-capture';
+      } else if (showLegal) {
+        className += ' legal-move';
+      }
+    }
+
+    const isLastTarget = drawState.has_last_move && drawState.last_move.dc === c && drawState.last_move.dr === r;
+    const isLastOrigin = !!(markerFrom && markerFrom.c === c && markerFrom.r === r);
+
+    if (isLastTarget) {
+      className += ' last-target';
+      className += (drawState.last_move_player === 'red' ? ' last-red' : ' last-blue');
+    }
+    if (isLastOrigin) {
+      className += ' last-origin';
+      className += (drawState.last_move_player === 'red' ? ' last-red' : ' last-blue');
+    }
+
+    const coordKey = key(c, r);
+    if (hint && coordKey === hintToKey) className += ' hint-target';
+    if (hint && hintFrom && coordKey === hintFromKey) className += ' hint-origin';
+    const isFxTo = coordKey === fxToKey;
+    const isFxFrom = coordKey === fxFromKey;
+    if (isFxTo) {
+      className += ' fx-to';
+      className += (fx && fx.player === 'blue' ? ' fx-blue' : ' fx-red');
+      if (fx && fx.capture) className += ' fx-impact';
+    }
+    if (isFxFrom) {
+      className += ' fx-from';
+    }
+
+    // Apply class list only if changed to minimize browser style recalculations
+    if (cell.className !== className) {
+      cell.className = className;
+    }
+
+    // Sync piece tokens
+    const currentToken = cell.firstElementChild;
+    if (piece) {
+      const pieceKey = `${piece.id}-${piece.kind}-${piece.player}-${piece.promote_level}-${uiPrefs.pieceTheme}`;
+      // Re-create the token only if piece changed, selection state toggled, or land fx state changed
+      if (!currentToken || 
+          currentToken.dataset.pieceKey !== pieceKey || 
+          currentToken.classList.contains('piece-active') !== (piece.id === selectedPid) || 
+          currentToken.classList.contains('piece-landed') !== isFxTo) {
+        cell.innerHTML = '';
         const token = renderPieceToken(piece);
+        token.dataset.pieceKey = pieceKey;
         if (isFxTo) token.classList.add('piece-landed');
         if (piece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
       }
+    } else {
+      if (currentToken) {
+        cell.innerHTML = '';
+      }
+    }
 
-      const selected = piece && piece.id === selectedPid;
-      cell.setAttribute('aria-selected', selected ? 'true' : 'false');
-      cell.setAttribute('aria-label', buildCellAriaLabel({
-        c,
-        r,
-        piece,
-        isSelected: !!selected,
-        isLegalMove: legal,
-        isLegalCapture: legalCapture,
-        isLastTarget,
-        isLastOrigin
-      }));
-      cell.addEventListener('click', onCellClick);
-      cell.addEventListener('keydown', onCellKeyDown);
-      frag.appendChild(cell);
+    const selected = piece && piece.id === selectedPid;
+    const isSelStr = selected ? 'true' : 'false';
+    if (cell.getAttribute('aria-selected') !== isSelStr) {
+      cell.setAttribute('aria-selected', isSelStr);
+    }
+
+    const newAriaLabel = buildCellAriaLabel({
+      c,
+      r,
+      piece,
+      isSelected: !!selected,
+      isLegalMove: legal,
+      isLegalCapture: legalCapture,
+      isLastTarget,
+      isLastOrigin
+    });
+    if (cell.getAttribute('aria-label') !== newAriaLabel) {
+      cell.setAttribute('aria-label', newAriaLabel);
     }
   }
-
-  boardEl.appendChild(frag);
 }
 
 function scheduleBoardDraw() {
@@ -4391,9 +4437,10 @@ const cloudGameApi = {
     return cloudApiPost('/api/hint', { game_id, difficulty });
   }
 };
+const ENGINE_VERSION = '0a88dadf61f2';
 
 async function createWasmGameApi() {
-  const mod = await import('/engine/engine_bridge.js');
+  const mod = await import(`/engine/engine_bridge.js?v=${ENGINE_VERSION}`);
   const bridge = mod?.default || mod;
   if (!bridge || typeof bridge.initEngine !== 'function') {
     throw new Error('engine bridge unavailable');

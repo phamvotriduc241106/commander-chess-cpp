@@ -6,7 +6,9 @@ const pending = new Map();
 
 function ensureWorker() {
   if (worker) return worker;
-  worker = new Worker('/engine/engine_worker.js');
+  const url = new URL(import.meta.url);
+  const v = url.searchParams.get('v');
+  worker = new Worker(`/engine/engine_worker.js${v ? '?v=' + v : ''}`);
 
   worker.onmessage = (event) => {
     const msg = event && event.data ? event.data : {};
@@ -29,16 +31,34 @@ function ensureWorker() {
   return worker;
 }
 
-function callWorker(cmd, payload = null) {
+function callWorker(cmd, payload = null, timeoutMs = 0) {
   const w = ensureWorker();
   const id = reqId++;
 
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    let timer = null;
+    
+    const onDone = () => {
+      if (timer) clearTimeout(timer);
+      pending.delete(id);
+    };
+
+    if (timeoutMs > 0) {
+      timer = setTimeout(() => {
+        onDone();
+        reject(new Error(`Engine worker request timed out after ${timeoutMs}ms (cmd: ${cmd})`));
+      }, timeoutMs);
+    }
+
+    pending.set(id, { 
+      resolve: (val) => { onDone(); resolve(val); }, 
+      reject: (err) => { onDone(); reject(err); } 
+    });
+    
     try {
       w.postMessage({ id, cmd, payload: payload || {} });
     } catch (err) {
-      pending.delete(id);
+      onDone();
       reject(err);
     }
   });
@@ -49,7 +69,7 @@ export async function initEngine() {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    await callWorker('init');
+    await callWorker('init', null, 15000); // 15 second timeout for init
     ready = true;
     return true;
   })();

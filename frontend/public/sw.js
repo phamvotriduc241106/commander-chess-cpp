@@ -1,9 +1,9 @@
-const CACHE_NAME = 'commander-chess-shell-178f6a8fd3be';
+const CACHE_NAME = 'commander-chess-shell-13cc8c51cddb';
 const APP_SHELL = [
   '/',
   '/index.html',
   '/style.cdeb4ab18ed5.css',
-  '/app.cd201fd4980e.js',
+  '/app.f59eb5cc631b.js',
   '/manifest.webmanifest',
   '/engine/commander_engine.js',
   '/engine/commander_engine.wasm',
@@ -62,7 +62,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.match(request, { ignoreSearch: true }).then((cached) => {
       if (cached) return cached;
       return fetch(request).then((response) => {
         if (!response || response.status !== 200 || response.type !== 'basic') return response;

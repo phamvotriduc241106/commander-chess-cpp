@@ -1,4 +1,17 @@
-importScripts('/engine/commander_engine.js');
+const params = new URLSearchParams(self.location.search);
+const v = params.get('v');
+const q = v ? '?v=' + v : '';
+
+self.Module = {
+  locateFile: function(path) {
+    if (path.endsWith('.wasm')) {
+      return '/engine/' + path + q;
+    }
+    return path;
+  }
+};
+
+importScripts('/engine/commander_engine.js' + q);
 
 let modulePromise = null;
 let moduleInstance = null;

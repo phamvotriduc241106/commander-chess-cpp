@@ -4851,10 +4851,10 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     EngineMutex tree_mutex;
     Player opp_player = opp(cpu_player);
 
-    auto evaluate_leaf_value = [&](SelectionPath& sel, int* out_val) -> bool {
+    auto evaluate_leaf_value = [&](SelectionPath& sel, ThreadData* td, int* out_val) -> bool {
         if (!out_val) return false;
         int val = alphabeta(sel.eval_st, ab_depth, -999999, 999999,
-                            cpu_player, (sel.l2_idx >= 0 ? 2 : 1), true, &sel.prev_move, nullptr);
+                            cpu_player, (sel.l2_idx >= 0 ? 2 : 1), true, &sel.prev_move, td);
         if (time_up()) return false;
         *out_val = val;
         return true;
@@ -4960,7 +4960,11 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
         g_game_rep_history = game_rep_history_copy;
         seed_search_hash_path_from_history(g_game_rep_history, root_st.hash);
         reset_time_state();
-        (void)tid;
+
+        auto td_ptr = std::make_unique<ThreadData>();
+        td_ptr->thread_id = tid;
+        td_ptr->reset();
+        ThreadData& td = *td_ptr;
 
         const bool use_webgpu = (active_eval_backend() == EvalBackendKind::WEBGPU);
         int eval_batch_size = use_webgpu ? MCTS_EVAL_BATCH_WEBGPU : MCTS_EVAL_BATCH_CPU;
@@ -4982,7 +4986,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
             std::vector<uint8_t> ok(selected.size(), 0);
             for (size_t i = 0; i < selected.size(); i++) {
                 int val = 0;
-                if (evaluate_leaf_value(selected[i], &val)) {
+                if (evaluate_leaf_value(selected[i], &td, &val)) {
                     values[i] = val;
                     ok[i] = 1;
                 }
