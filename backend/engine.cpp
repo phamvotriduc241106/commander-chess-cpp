@@ -46,7 +46,15 @@ static PieceList to_core(const std::vector<PieceData>& src) {
     PieceList out;
     out.reserve(src.size());
     for (const auto& p : src) {
-        out.push_back(Piece{p.id, p.player, p.kind, p.col, p.row, p.hero, p.carrier_id});
+        out.push_back(Piece{
+            static_cast<int16_t>(p.id),
+            string_to_player(p.player),
+            string_to_kind(p.kind),
+            static_cast<int8_t>(p.col),
+            static_cast<int8_t>(p.row),
+            p.hero,
+            static_cast<int8_t>(p.carrier_id)
+        });
     }
     return out;
 }
@@ -55,7 +63,15 @@ static std::vector<PieceData> from_core(const PieceList& src) {
     std::vector<PieceData> out;
     out.reserve(src.size());
     for (const auto& p : src) {
-        out.push_back(PieceData{p.id, p.player, p.kind, p.col, p.row, p.hero, p.carrier_id});
+        out.push_back(PieceData{
+            p.id,
+            player_to_string(p.player),
+            kind_to_string(p.kind),
+            p.col,
+            p.row,
+            p.hero,
+            p.carrier_id
+        });
     }
     return out;
 }
@@ -143,7 +159,7 @@ static ActionStatus finalize_apply(GameState& state, PieceList& pieces_after, co
     st.ok = true;
 
     // Win check follows original game flow: check before switching side.
-    std::string wm = check_win(pieces_after, mover);
+    std::string wm = check_win(pieces_after, string_to_player(mover));
     if (!wm.empty()) {
         state.pieces = from_core(pieces_after);
         state.game_over = true;
@@ -153,8 +169,8 @@ static ActionStatus finalize_apply(GameState& state, PieceList& pieces_after, co
         return st;
     }
 
-    state.current = opp(state.current);
-    uint64_t h = zobrist_hash(pieces_after, state.current);
+    state.current = player_to_string(opp(string_to_player(state.current)));
+    uint64_t h = zobrist_hash(pieces_after, string_to_player(state.current));
     push_position_history(state.position_history, h);
     if (is_threefold_repetition(state.position_history, h)) {
         state.pieces = from_core(pieces_after);
@@ -186,7 +202,7 @@ GameState new_game(const std::string& game_mode, const std::string& difficulty) 
     out.pieces = from_core(p);
     out.current = "red";
     out.position_history.clear();
-    push_position_history(out.position_history, zobrist_hash(p, out.current));
+    push_position_history(out.position_history, zobrist_hash(p, string_to_player(out.current)));
     out.game_over = false;
     out.result.clear();
     out.has_last_move = false;
@@ -217,7 +233,7 @@ ActionStatus apply_move(GameState& state, const Move& move) {
         st.error = "piece not found";
         return st;
     }
-    if (piece->player != state.current) {
+    if (piece->player != string_to_player(state.current)) {
         st.error = "not this piece's turn";
         return st;
     }
@@ -230,16 +246,16 @@ ActionStatus apply_move(GameState& state, const Move& move) {
     int enemy_before = 0;
     int own_before = 0;
     for (const auto& p : pieces) {
-        if (p.player == state.current) own_before++;
+        if (p.player == string_to_player(state.current)) own_before++;
         else enemy_before++;
     }
 
-    PieceList after = ::apply_move(pieces, move.pid, move.dc, move.dr, state.current);
+    PieceList after = ::apply_move(pieces, move.pid, move.dc, move.dr, string_to_player(state.current));
 
     int enemy_after = 0;
     int own_after = 0;
     for (const auto& p : after) {
-        if (p.player == state.current) own_after++;
+        if (p.player == string_to_player(state.current)) own_after++;
         else enemy_after++;
     }
 
@@ -264,7 +280,7 @@ Move bot_move(GameState& state) {
     tt_clear();
     g_game_rep_history = state.position_history;
 
-    AIResult ai = cpu_pick_move(pieces, state.current, state.bot_depth, state.bot_time_limit);
+    AIResult ai = cpu_pick_move(pieces, string_to_player(state.current), state.bot_depth, state.bot_time_limit);
     if (!ai.found) return Move{-1, -1, -1};
 
     Move m{ai.move.pid, ai.move.dc, ai.move.dr};
@@ -294,7 +310,7 @@ SerializedState serialize_state(const GameState& state) {
 
     PieceList pieces = to_core(state.pieces);
     for (const auto& p : pieces) {
-        if (p.player != state.current) continue;
+        if (p.player != string_to_player(state.current)) continue;
         auto mvs = get_moves(p, pieces);
         for (const auto& m : mvs) {
             out.legal_moves.push_back(Move{p.id, m.first, m.second});
