@@ -1,3 +1,5 @@
+import CommanderEngine from '/engine/commander_engine.js';
+
 let modulePromise = null;
 let moduleInstance = null;
 let api = null;
@@ -14,8 +16,7 @@ function parseJsonOrThrow(raw, label) {
 }
 
 async function loadFactory() {
-  const mod = await import('/engine/commander_engine.js');
-  return mod.default || mod.CommanderEngine || self.CommanderEngine;
+  return CommanderEngine;
 }
 
 async function ensureApi() {
