@@ -33,7 +33,6 @@ emcc \
   -sFILESYSTEM=0 \
   -sENVIRONMENT=web,worker \
   -sASSERTIONS=0 \
-  -sEXPORT_ES6=1 \
   -sUSE_SDL=2 \
   -sUSE_SDL_IMAGE=2 \
   -sUSE_SDL_TTF=2

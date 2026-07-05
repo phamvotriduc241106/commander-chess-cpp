@@ -6,7 +6,7 @@ const pending = new Map();
 
 function ensureWorker() {
   if (worker) return worker;
-  worker = new Worker('/engine/engine_worker.js', { type: 'module' });
+  worker = new Worker('/engine/engine_worker.js');
 
   worker.onmessage = (event) => {
     const msg = event && event.data ? event.data : {};

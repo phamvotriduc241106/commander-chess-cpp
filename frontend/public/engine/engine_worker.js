@@ -1,4 +1,4 @@
-import CommanderEngine from '/engine/commander_engine.js';
+importScripts('/engine/commander_engine.js');
 
 let modulePromise = null;
 let moduleInstance = null;
@@ -16,7 +16,7 @@ function parseJsonOrThrow(raw, label) {
 }
 
 async function loadFactory() {
-  return CommanderEngine;
+  return self.CommanderEngine;
 }
 
 async function ensureApi() {
