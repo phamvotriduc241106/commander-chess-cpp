@@ -4,6 +4,7 @@
 
 #include <cstdlib>
 #include <cctype>
+#include <chrono>
 #include <iomanip>
 #include <mutex>
 #include <random>
@@ -15,7 +16,12 @@ using json = nlohmann::json;
 
 namespace {
 
-std::unordered_map<std::string, commander::GameState> g_sessions;
+struct SessionData {
+    commander::GameState state;
+    std::chrono::system_clock::time_point last_accessed;
+};
+
+std::unordered_map<std::string, SessionData> g_sessions;
 std::mutex g_sessions_mu;
 
 std::string make_game_id() {
@@ -35,6 +41,17 @@ std::string normalize_difficulty(std::string d) {
     if (d == "easy" || d == "beginner") return "easy";
     if (d == "hard" || d == "expert") return "hard";
     return "medium";
+}
+
+void prune_old_sessions() {
+    auto now = std::chrono::system_clock::now();
+    for (auto it = g_sessions.begin(); it != g_sessions.end(); ) {
+        if (now - it->second.last_accessed > std::chrono::hours(4)) {
+            it = g_sessions.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 json move_to_json(const commander::Move& m) {
@@ -104,6 +121,9 @@ bool parse_move(const json& j, commander::Move& m) {
 
 void set_json(httplib::Response& res, int status, const json& body) {
     res.status = status;
+    res.set_header("Access-Control-Allow-Origin", "*");
+    res.set_header("Access-Control-Allow-Headers", "Content-Type");
+    res.set_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     res.set_content(body.dump(), "application/json");
 }
 
@@ -117,6 +137,13 @@ void register_post(httplib::Server& svr, const std::string& path, Fn&& fn) {
 
 int main() {
     httplib::Server svr;
+
+    svr.Options(R"(/.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Headers", "Content-Type");
+        res.set_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+        res.status = 200;
+    });
 
     auto health_handler = [](const httplib::Request&, httplib::Response& res) {
         set_json(res, 200, json{{"ok", true}});
@@ -155,7 +182,8 @@ int main() {
         std::string gid = make_game_id();
         {
             std::lock_guard<std::mutex> lk(g_sessions_mu);
-            g_sessions[gid] = st;
+            prune_old_sessions();
+            g_sessions[gid] = SessionData{st, std::chrono::system_clock::now()};
         }
 
         set_json(res, 200, json{{"game_id", gid}, {"state", state_to_json(commander::serialize_state(st))}});
@@ -186,14 +214,15 @@ int main() {
             set_json(res, 404, json{{"error", "game_id not found"}});
             return;
         }
+        it->second.last_accessed = std::chrono::system_clock::now();
 
-        commander::ActionStatus st = commander::apply_move(it->second, mv);
+        commander::ActionStatus st = commander::apply_move(it->second.state, mv);
         if (!st.ok) {
             set_json(res, 400, json{{"error", st.error}});
             return;
         }
 
-        set_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second))}});
+        set_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second.state))}});
     });
 
     register_post(svr, "/bot", [](const httplib::Request& req, httplib::Response& res) {
@@ -215,23 +244,24 @@ int main() {
             set_json(res, 404, json{{"error", "game_id not found"}});
             return;
         }
+        it->second.last_accessed = std::chrono::system_clock::now();
 
-        if (it->second.game_over) {
-            set_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second))}});
+        if (it->second.state.game_over) {
+            set_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second.state))}});
             return;
         }
 
         if (in.contains("difficulty") && in["difficulty"].is_string()) {
-            it->second.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
+            it->second.state.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
         }
 
-        commander::Move m = commander::bot_move(it->second);
+        commander::Move m = commander::bot_move(it->second.state);
         if (m.pid < 0) {
             set_json(res, 400, json{{"error", "bot could not find a legal move"}});
             return;
         }
 
-        set_json(res, 200, json{{"move", move_to_json(m)}, {"state", state_to_json(commander::serialize_state(it->second))}});
+        set_json(res, 200, json{{"move", move_to_json(m)}, {"state", state_to_json(commander::serialize_state(it->second.state))}});
     });
 
     register_post(svr, "/hint", [](const httplib::Request& req, httplib::Response& res) {
@@ -253,13 +283,14 @@ int main() {
             set_json(res, 404, json{{"error", "game_id not found"}});
             return;
         }
+        it->second.last_accessed = std::chrono::system_clock::now();
 
-        if (it->second.game_over) {
+        if (it->second.state.game_over) {
             set_json(res, 400, json{{"error", "game is already over"}});
             return;
         }
 
-        commander::GameState probe = it->second;
+        commander::GameState probe = it->second.state;
         if (in.contains("difficulty") && in["difficulty"].is_string()) {
             probe.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
         }

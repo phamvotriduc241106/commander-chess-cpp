@@ -5879,3 +5879,9 @@ tryLoadReplayFromUrl().catch((err) => {
 });
 
 loadSprites().then(() => drawBoard(true));
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.warn('[Commander Chess] Unhandled promise rejection:', event.reason);
+  showError(event.reason);
+});
+
