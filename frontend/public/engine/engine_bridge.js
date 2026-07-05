@@ -108,13 +108,25 @@ export async function getBestMove({ timeMs = 0, depth = 0 } = {}) {
   return callWorker('getBestMove', { timeMs, depth });
 }
 
+export function terminateEngine() {
+  if (worker) {
+    worker.terminate();
+    worker = null;
+  }
+  ready = false;
+  initPromise = null;
+  pending.forEach((p) => p.reject(new Error('Engine worker terminated')));
+  pending.clear();
+}
+
 const engineBridge = {
   initEngine,
   newGame,
   setPosition,
   getPosition,
   applyMove,
-  getBestMove
+  getBestMove,
+  terminateEngine
 };
 
 export default engineBridge;

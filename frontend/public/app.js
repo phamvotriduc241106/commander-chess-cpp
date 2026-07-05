@@ -1140,6 +1140,10 @@ let lastMoveFrom = null;
 let moveHistory = [];
 let stateHistory = [];
 let reviewIndex = -1; // -1 = live board, otherwise stateHistory index
+let historyOffset = 0;
+const HISTORY_LIMIT = 500;
+let cumulativeDestroyed = { red: Object.create(null), blue: Object.create(null) };
+let destroyedHistory = [];
 
 let lastRulesDocTrigger = null;
 let lastSetupAboutTrigger = null;
@@ -1161,6 +1165,10 @@ let replayLoading = false;
 let audioCtx = null;
 let audioMaster = null;
 let audioBuffers = Object.create(null);
+
+function clearCaches() {
+  vectorSpriteCache = Object.create(null);
+}
 
 function ensureAudio() {
   if (audioCtx) return audioCtx;
@@ -1434,6 +1442,10 @@ function applyUndoSteps(steps) {
   const targetState = cloneState(stateHistory[targetIndex]);
   stateHistory = stateHistory.slice(0, targetIndex + 1);
   moveHistory = moveHistory.slice(0, targetIndex);
+  destroyedHistory = destroyedHistory.slice(0, targetIndex + 1);
+  cumulativeDestroyed = destroyedHistory.length > 0
+    ? JSON.parse(JSON.stringify(destroyedHistory[destroyedHistory.length - 1]))
+    : { red: Object.create(null), blue: Object.create(null) };
   state = targetState;
   reviewIndex = -1;
   selectedPid = null;
@@ -1859,6 +1871,7 @@ function rememberBoardFx(nextState, fromSquare) {
 
 function applyUiPrefs(nextPrefs = uiPrefs, persist = false) {
   uiPrefs = normalizeUiPrefs(nextPrefs);
+  clearCaches();
   const animationsActive = effectiveAnimationsEnabled();
 
   document.documentElement.setAttribute('data-board-skin', uiPrefs.boardSkin);
@@ -2491,7 +2504,10 @@ function cloneState(src) {
 }
 
 function currentViewState() {
-  if (reviewIndex >= 0 && reviewIndex < stateHistory.length) return stateHistory[reviewIndex];
+  if (reviewIndex >= 0) {
+    const localIdx = reviewIndex - historyOffset;
+    if (localIdx >= 0 && localIdx < stateHistory.length) return stateHistory[localIdx];
+  }
   return state;
 }
 
@@ -2539,6 +2555,27 @@ function addHistoryEntry(prevState, nextState, fromSquare) {
     pid: nextState.last_move.pid
   });
   stateHistory.push(cloneState(nextState));
+
+  if (nextState.last_move_capture) {
+    const attacker = nextState.last_move_player;
+    if (attacker === 'red' || attacker === 'blue') {
+      const nextIds = new Set(nextState.pieces.map((p) => p.id));
+      for (const p of prevState.pieces) {
+        if (!nextIds.has(p.id) && p.kind !== 'H' && p.player !== attacker) {
+          cumulativeDestroyed[attacker][p.kind] = (cumulativeDestroyed[attacker][p.kind] || 0) + 1;
+        }
+      }
+    }
+  }
+  destroyedHistory.push(JSON.parse(JSON.stringify(cumulativeDestroyed)));
+
+  if (moveHistory.length > HISTORY_LIMIT) {
+    moveHistory.shift();
+    stateHistory.shift();
+    destroyedHistory.shift();
+    historyOffset++;
+  }
+
   reviewIndex = -1;
 }
 
@@ -2547,7 +2584,7 @@ function historyLabel(m, idx) {
   const to = `(${m.to.c},${m.to.r})`;
   const cap = m.capture ? ' x' : '';
   return t('historyFormat', {
-    index: idx + 1,
+    index: idx + 1 + historyOffset,
     player: sideCaps(m.player),
     from,
     to,
@@ -2568,7 +2605,7 @@ function updateHistoryUI() {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.textContent = historyLabel(m, idx);
-      const snapIdx = idx + 1; // state after this move
+      const snapIdx = idx + 1 + historyOffset; // state after this move (absolute index)
       if (reviewIndex === snapIdx) btn.classList.add('active');
       btn.addEventListener('click', () => {
         reviewIndex = snapIdx;
@@ -2584,7 +2621,7 @@ function updateHistoryUI() {
 
   const hasHistory = stateHistory.length > 1;
   const reviewing = reviewIndex >= 0;
-  histPrevBtn.disabled = !hasHistory || (reviewing && reviewIndex <= 0);
+  histPrevBtn.disabled = !hasHistory || (reviewing && reviewIndex <= historyOffset);
   histNextBtn.disabled = !reviewing;
   histLiveBtn.disabled = !reviewing;
 }
@@ -3179,7 +3216,7 @@ function drawBoardNow() {
   const legalMoves = selectedPiece ? legalMovesForPid(selectedPid, drawState) : [];
   const legalSet = new Map(legalMoves.map(m => [key(m.dc, m.dr), m]));
   const markerFrom = reviewing
-    ? (reviewIndex > 0 ? moveHistory[reviewIndex - 1]?.from || null : null)
+    ? (reviewIndex > historyOffset ? moveHistory[reviewIndex - historyOffset - 1]?.from || null : null)
     : lastMoveFrom;
   const hint = (!reviewing && hintMove && !drawState.game_over) ? normalizeMove(hintMove) : null;
   const hintPiece = hint ? pieceById(hint.pid, drawState) : null;
@@ -3420,8 +3457,8 @@ function updateStatus() {
   const selected = reviewing ? null : pieceById(selectedPid, viewState);
 
   if (reviewing) {
-    if (reviewIndex === 0) statusEl.textContent = t('reviewingInitial');
-    else statusEl.textContent = t('reviewingMove', { index: reviewIndex, total: moveHistory.length });
+    if (reviewIndex === historyOffset) statusEl.textContent = t('reviewingInitial');
+    else statusEl.textContent = t('reviewingMove', { index: reviewIndex, total: moveHistory.length + historyOffset });
   } else if (state.game_over) {
     statusEl.textContent = t('gameOver', { result: state.result });
   } else if (isOnlineMultiplayer()) {
@@ -3444,7 +3481,7 @@ function updateStatus() {
 
   let lastMoveTxt = t('lastMoveNone');
   const markerFrom = reviewing
-    ? (reviewIndex > 0 ? moveHistory[reviewIndex - 1]?.from || null : null)
+    ? (reviewIndex > historyOffset ? moveHistory[reviewIndex - historyOffset - 1]?.from || null : null)
     : lastMoveFrom;
   if (viewState.has_last_move) {
     if (markerFrom) {
@@ -3512,25 +3549,7 @@ function pieceStatsLabel(kind) {
 }
 
 function computeDestroyedByAttacker() {
-  const totals = { red: Object.create(null), blue: Object.create(null) };
-  if (!Array.isArray(stateHistory) || stateHistory.length < 2) return totals;
-
-  for (let i = 1; i < stateHistory.length; i++) {
-    const prev = stateHistory[i - 1];
-    const next = stateHistory[i];
-    if (!prev || !next || !next.last_move_player) continue;
-    const attacker = next.last_move_player;
-    if (attacker !== 'red' && attacker !== 'blue') continue;
-    const nextIds = new Set(next.pieces.map((p) => p.id));
-    for (const p of prev.pieces) {
-      if (nextIds.has(p.id)) continue;
-      if (p.kind === 'H') continue;
-      if (p.player === attacker) continue;
-      totals[attacker][p.kind] = (totals[attacker][p.kind] || 0) + 1;
-    }
-  }
-
-  return totals;
+  return JSON.parse(JSON.stringify(cumulativeDestroyed));
 }
 
 function formatDestroyedKindsLine(kindsMap) {
@@ -3754,6 +3773,9 @@ async function loadReplayFromPayload(payload) {
   let currentState = state;
   const nextStateHistory = [cloneState(currentState)];
   const nextMoveHistory = [];
+  cumulativeDestroyed = { red: Object.create(null), blue: Object.create(null) };
+  destroyedHistory = [JSON.parse(JSON.stringify(cumulativeDestroyed))];
+  historyOffset = 0;
 
   for (const mvRaw of rawMoves.slice(0, REPLAY_MAX_MOVES)) {
     const move = normalizeMove(mvRaw);
@@ -3770,6 +3792,27 @@ async function loadReplayFromPayload(payload) {
       pid: currentState.last_move.pid
     });
     nextStateHistory.push(cloneState(currentState));
+
+    if (currentState.last_move_capture) {
+      const attacker = currentState.last_move_player;
+      if (attacker === 'red' || attacker === 'blue') {
+        const nextIds = new Set(currentState.pieces.map((p) => p.id));
+        for (const p of prev.pieces) {
+          if (!nextIds.has(p.id) && p.kind !== 'H' && p.player !== attacker) {
+            cumulativeDestroyed[attacker][p.kind] = (cumulativeDestroyed[attacker][p.kind] || 0) + 1;
+          }
+        }
+      }
+    }
+    destroyedHistory.push(JSON.parse(JSON.stringify(cumulativeDestroyed)));
+
+    if (nextMoveHistory.length > HISTORY_LIMIT) {
+      nextMoveHistory.shift();
+      nextStateHistory.shift();
+      destroyedHistory.shift();
+      historyOffset++;
+    }
+
     if (currentState.game_over) break;
   }
 
@@ -3777,7 +3820,7 @@ async function loadReplayFromPayload(payload) {
   moveHistory = nextMoveHistory;
   stateHistory = nextStateHistory;
   selectedPid = null;
-  reviewIndex = stateHistory.length > 1 ? stateHistory.length - 1 : -1;
+  reviewIndex = stateHistory.length > 1 ? stateHistory.length + historyOffset - 1 : -1;
   lastMoveFrom = moveHistory.length > 0 ? moveHistory[moveHistory.length - 1].from || null : null;
   hasStartedGame = true;
   postGameShownSignature = '';
@@ -4437,7 +4480,7 @@ const cloudGameApi = {
     return cloudApiPost('/api/hint', { game_id, difficulty });
   }
 };
-const ENGINE_VERSION = '0a88dadf61f2';
+const ENGINE_VERSION = '8e81e04e2250';
 
 async function createWasmGameApi() {
   const mod = await import(`/engine/engine_bridge.js?v=${ENGINE_VERSION}`);
@@ -5034,6 +5077,19 @@ function closeSetupMenu() {
 }
 
 async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMode) {
+  if (gameApi && gameApi.name === 'wasm') {
+    try {
+      const mod = await import(`/engine/engine_bridge.js?v=${ENGINE_VERSION}`);
+      const bridge = mod?.default || mod;
+      if (bridge && typeof bridge.terminateEngine === 'function') {
+        bridge.terminateEngine();
+      }
+    } catch (_) {
+      // Ignore
+    }
+  }
+  clearCaches();
+
   clearAutoBotTimer();
   clearBoardFx();
   clearHintMove();
@@ -5066,6 +5122,9 @@ async function newGame(gameMode, side, difficulty, playerMode = selectedPlayerMo
   stateHistory = [cloneState(state)];
   moveHistory = [];
   reviewIndex = -1;
+  historyOffset = 0;
+  cumulativeDestroyed = { red: Object.create(null), blue: Object.create(null) };
+  destroyedHistory = [JSON.parse(JSON.stringify(cumulativeDestroyed))];
   updateHistoryUI();
   if (sideSelect) sideSelect.value = isOnlineMultiplayer() ? onlineRoleSide() : launchSide;
   selectedDifficulty = (state?.difficulty && isValidDifficulty(state.difficulty)) ? state.difficulty : difficulty;
@@ -5756,8 +5815,8 @@ if (moveHintsToggleEl) {
 
 histPrevBtn.addEventListener('click', () => {
   if (stateHistory.length <= 1) return;
-  if (reviewIndex < 0) reviewIndex = stateHistory.length - 2;
-  else if (reviewIndex > 0) reviewIndex--;
+  if (reviewIndex < 0) reviewIndex = stateHistory.length + historyOffset - 2;
+  else if (reviewIndex > historyOffset) reviewIndex--;
   selectedPid = null;
   updateHistoryUI();
   updateStatus();
@@ -5766,8 +5825,8 @@ histPrevBtn.addEventListener('click', () => {
 
 histNextBtn.addEventListener('click', () => {
   if (reviewIndex < 0) return;
-  if (reviewIndex < stateHistory.length - 1) reviewIndex++;
-  if (reviewIndex >= stateHistory.length - 1) reviewIndex = -1;
+  if (reviewIndex < stateHistory.length + historyOffset - 1) reviewIndex++;
+  if (reviewIndex >= stateHistory.length + historyOffset - 1) reviewIndex = -1;
   selectedPid = null;
   updateHistoryUI();
   updateStatus();
