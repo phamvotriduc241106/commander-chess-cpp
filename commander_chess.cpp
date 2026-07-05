@@ -87,6 +87,12 @@
 #include <future>
 #include <iomanip>
 #include <iostream>
+
+
+
+
+
+
 #include <map>
 #include <memory>
 #include <mutex>
@@ -102,6 +108,67 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+enum class Player : int8_t { None = -1, Red = 0, Blue = 1 };
+
+enum class PieceKind : int8_t {
+    None = 0,
+    HQ = 1,
+    Commander = 2,
+    Infantry = 3,
+    Militia = 4,
+    Tank = 5,
+    Engineer = 6,
+    Artillery = 7,
+    AntiAircraft = 8,
+    Missile = 9,
+    AirForce = 10,
+    Navy = 11
+};
+
+static inline std::string player_to_string(Player p) {
+    if (p == Player::Red) return "red";
+    if (p == Player::Blue) return "blue";
+    return "";
+}
+
+static inline Player string_to_player(const std::string& s) {
+    if (s == "red") return Player::Red;
+    if (s == "blue") return Player::Blue;
+    return Player::None;
+}
+
+static inline std::string kind_to_string(PieceKind k) {
+    switch (k) {
+        case PieceKind::HQ: return "H";
+        case PieceKind::Commander: return "C";
+        case PieceKind::Infantry: return "In";
+        case PieceKind::Militia: return "M";
+        case PieceKind::Tank: return "T";
+        case PieceKind::Engineer: return "E";
+        case PieceKind::Artillery: return "A";
+        case PieceKind::AntiAircraft: return "Aa";
+        case PieceKind::Missile: return "Ms";
+        case PieceKind::AirForce: return "Af";
+        case PieceKind::Navy: return "N";
+        default: return "";
+    }
+}
+
+static inline PieceKind string_to_kind(const std::string& s) {
+    if (s == "H") return PieceKind::HQ;
+    if (s == "C") return PieceKind::Commander;
+    if (s == "In") return PieceKind::Infantry;
+    if (s == "M") return PieceKind::Militia;
+    if (s == "T") return PieceKind::Tank;
+    if (s == "E") return PieceKind::Engineer;
+    if (s == "A") return PieceKind::Artillery;
+    if (s == "Aa") return PieceKind::AntiAircraft;
+    if (s == "Ms") return PieceKind::Missile;
+    if (s == "Af") return PieceKind::AirForce;
+    if (s == "N") return PieceKind::Navy;
+    return PieceKind::None;
+}
 
 #if defined(__EMSCRIPTEN__)
 #define COMMANDER_ENABLE_THREADS 0
@@ -128,6 +195,19 @@ using EngineMutex = EngineNoopMutex;
 #if defined(COMMANDER_ENABLE_WEBGPU) && COMMANDER_ENABLE_WEBGPU
 #if __has_include(<webgpu/webgpu.h>)
 #include <webgpu/webgpu.h>
+
+
+}
+
+
+
+
+
+
+
+
+
+
 #define COMMANDER_HAS_WEBGPU_HEADER 1
 #else
 #define COMMANDER_HAS_WEBGPU_HEADER 0
@@ -354,58 +434,52 @@ struct PieceDef {
     std::string domain; // land/sea/air/commander
 };
 
-static std::map<std::string, PieceDef> PIECE_DEF = {
-    {"C",  {"Commander",         10, false, false, "commander"}},
-    {"H",  {"Headquarters",       0, false, false, "commander"}},
-    {"In", {"Infantry",           1, false, false, "land"}},
-    {"M",  {"Militia",            1, true,  false, "land"}},
-    {"T",  {"Tank",               2, false, false, "land"}},
-    {"E",  {"Engineer",           1, false, false, "land"}},
-    {"A",  {"Artillery",          3, false, false, "land"}},
-    {"Aa", {"Anti-Aircraft",      1, false, false, "land"}},
-    {"Ms", {"Missile",            2, false, false, "land"}},
-    {"Af", {"Air Force",          4, true,  true,  "air"}},
-    {"N",  {"Navy",               4, true,  true,  "sea"}},
+static std::map<PieceKind, PieceDef> PIECE_DEF = {
+    {PieceKind::Commander,  {"Commander",         10, false, false, "commander"}},
+    {PieceKind::HQ,  {"Headquarters",       0, false, false, "commander"}},
+    {PieceKind::Infantry, {"Infantry",           1, false, false, "land"}},
+    {PieceKind::Militia,  {"Militia",            1, true,  false, "land"}},
+    {PieceKind::Tank,  {"Tank",               2, false, false, "land"}},
+    {PieceKind::Engineer,  {"Engineer",           1, false, false, "land"}},
+    {PieceKind::Artillery,  {"Artillery",          3, false, false, "land"}},
+    {PieceKind::AntiAircraft, {"Anti-Aircraft",      1, false, false, "land"}},
+    {PieceKind::Missile, {"Missile",            2, false, false, "land"}},
+    {PieceKind::AirForce, {"Air Force",          4, true,  true,  "air"}},
+    {PieceKind::Navy,  {"Navy",               4, true,  true,  "sea"}},
 };
 
-static std::map<std::string, int> PIECE_VALUE = {
+static std::map<PieceKind, int> PIECE_VALUE = {
     // Official rulebook point scale ×10 for integer evaluation.
-    {"C",1000},{"H",0},{"In",100},{"M",100},
-    {"T",200},{"E",100},{"A",300},{"Aa",100},
-    {"Ms",200},{"Af",400},{"N",800},
+    {PieceKind::Commander,1000},{PieceKind::HQ,0},{PieceKind::Infantry,100},{PieceKind::Militia,100},
+    {PieceKind::Tank,200},{PieceKind::Engineer,100},{PieceKind::Artillery,300},{PieceKind::AntiAircraft,100},
+    {PieceKind::Missile,200},{PieceKind::AirForce,400},{PieceKind::Navy,800},
 };
 
 // Forward-declared fast helpers (kind_index defined fully later; this early
 // version is identical and needed because compute_game_phase / quick_eval
 // call piece_value_fast before the main kind_index definition).
-static inline int kind_index_early(const std::string& k) {
-    if (k.empty()) return 0;
-    switch (k[0]) {
-        case 'C': return 0;
-        case 'H': return 1;
-        case 'I': return 2;
-        case 'M': return (k.size()>1 && k[1]=='s') ? 8 : 3;
-        case 'T': return 4;
-        case 'E': return 5;
-        case 'A': if (k.size()>1) { if (k[1]=='a') return 7; if (k[1]=='f') return 9; }
-                  return 6;
-        case 'N': return 10;
-        default: return 0;
-    }
-}
+
 static const int PIECE_VALUE_FAST[11] = {1000, 0, 100, 100, 200, 100, 300, 100, 200, 400, 800};
-static inline int piece_value_fast(const std::string& kind) {
-    int ki = kind_index_early(kind);
+static inline int piece_value_fast(PieceKind kind) {
+    int ki = static_cast<int>(kind) - 1;
     return (ki >= 0 && ki < 11) ? PIECE_VALUE_FAST[ki] : 0;
 }
 
+
+
+
+
+
+
+
+
 struct Piece {
-    int  id;
-    std::string player; // "red" or "blue"
-    std::string kind;
-    int  col, row;
+    int16_t id;
+    Player player;
+    PieceKind kind;
+    int8_t  col, row;
     bool hero;
-    int  carrier_id; // -1 when not carried; otherwise piece id of carrier
+    int8_t  carrier_id;
 };
 
 struct PieceList {
@@ -511,7 +585,7 @@ struct PieceList {
 // BOARD HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-static std::string opp(const std::string& p) { return p=="red" ? "blue" : "red"; }
+static inline Player opp(Player p) { return p == Player::Red ? Player::Blue : Player::Red; }
 static bool on_board(int c, int r) { return c>=0 && c<=10 && r>=0 && r<=11; }
 static bool is_sea(int c, int /*r*/) { return c <= 2; }
 static bool is_reef(int c) { return c==5 || c==7; }
@@ -549,47 +623,47 @@ static const Piece* piece_by_id_c(const PieceList& pieces, int id) {
     return nullptr;
 }
 
-static bool is_person_payload_kind(const std::string& kind) {
-    return kind == "In" || kind == "M" || kind == "E" || kind == "C";
+static bool is_person_payload_kind(PieceKind kind) {
+    return kind == PieceKind::Infantry || kind == PieceKind::Militia || kind == PieceKind::Engineer || kind == PieceKind::Commander;
 }
 
-static bool is_ground_piece_kind(const std::string& kind) {
-    return kind == "C" || kind == "H" ||
-           kind == "In" || kind == "M" || kind == "T" || kind == "E" ||
-           kind == "A" || kind == "Aa" || kind == "Ms";
+static bool is_ground_piece_kind(PieceKind kind) {
+    return kind == PieceKind::Commander || kind == PieceKind::HQ ||
+           kind == PieceKind::Infantry || kind == PieceKind::Militia || kind == PieceKind::Tank || kind == PieceKind::Engineer ||
+           kind == PieceKind::Artillery || kind == PieceKind::AntiAircraft || kind == PieceKind::Missile;
 }
 
-static bool can_carry_kind(const std::string& carrier_kind, const std::string& carried_kind) {
-    if (carried_kind == "H") return false;
-    if (carried_kind == "C") {
-        return carrier_kind == "T" || carrier_kind == "Af" || carrier_kind == "N";
+static bool can_carry_kind(PieceKind carrier_kind, PieceKind carried_kind) {
+    if (carried_kind == PieceKind::HQ) return false;
+    if (carried_kind == PieceKind::Commander) {
+        return carrier_kind == PieceKind::Tank || carrier_kind == PieceKind::AirForce || carrier_kind == PieceKind::Navy;
     }
-    if (carrier_kind == "N") {
-        return carried_kind == "Af" || carried_kind == "T" || is_person_payload_kind(carried_kind);
+    if (carrier_kind == PieceKind::Navy) {
+        return carried_kind == PieceKind::AirForce || carried_kind == PieceKind::Tank || is_person_payload_kind(carried_kind);
     }
-    if (carrier_kind == "T") {
+    if (carrier_kind == PieceKind::Tank) {
         // Tank carries one person payload.
         return is_person_payload_kind(carried_kind);
     }
-    if (carrier_kind == "Af") {
+    if (carrier_kind == PieceKind::AirForce) {
         // Air force transports one tank OR one person payload.
-        return carried_kind == "In" || carried_kind == "M" || carried_kind == "E" ||
-               carried_kind == "T";
+        return carried_kind == PieceKind::Infantry || carried_kind == PieceKind::Militia || carried_kind == PieceKind::Engineer ||
+               carried_kind == PieceKind::Tank;
     }
-    if (carrier_kind == "E") {
+    if (carrier_kind == PieceKind::Engineer) {
         // Engineer can ferry heavy vehicles across river segments.
-        return carried_kind == "Aa" || carried_kind == "A" || carried_kind == "Ms";
+        return carried_kind == PieceKind::AntiAircraft || carried_kind == PieceKind::Artillery || carried_kind == PieceKind::Missile;
     }
     return false;
 }
 
 static bool carrier_capacity_allows_add(const PieceList& pieces, int carrier_id,
-                                        const std::string& carrier_kind,
-                                        const std::string& add_kind) {
+                                        PieceKind carrier_kind,
+                                        PieceKind add_kind) {
     int af = 0, tank = 0, person = 0, other = 0;
-    auto bump = [&](const std::string& kind) {
-        if (kind == "Af") af++;
-        else if (kind == "T") tank++;
+    auto bump = [&](PieceKind kind) {
+        if (kind == PieceKind::AirForce) af++;
+        else if (kind == PieceKind::Tank) tank++;
         else if (is_person_payload_kind(kind)) person++;
         else other++;
     };
@@ -598,7 +672,7 @@ static bool carrier_capacity_allows_add(const PieceList& pieces, int carrier_id,
     }
     bump(add_kind);
 
-    if (carrier_kind == "N") {
+    if (carrier_kind == PieceKind::Navy) {
         if (other > 0) return false;
         // Allowed Navy cargo combos:
         // 2 Af, or 2 T, or 1 Af+1 T, or 1 Af+1 person.
@@ -609,12 +683,12 @@ static bool carrier_capacity_allows_add(const PieceList& pieces, int carrier_id,
         if (af == 0 && tank == 0 && person <= 1) return true;
         return false;
     }
-    if (carrier_kind == "Af") {
+    if (carrier_kind == PieceKind::AirForce) {
         if (af > 0 || other > 0) return false;
         // One tank OR one person.
         return (tank + person) <= 1;
     }
-    if (carrier_kind == "T") {
+    if (carrier_kind == PieceKind::Tank) {
         if (af > 0 || tank > 0 || other > 0) return false;
         // One person.
         return person <= 1;
@@ -622,11 +696,11 @@ static bool carrier_capacity_allows_add(const PieceList& pieces, int carrier_id,
     return true;
 }
 
-static bool carrier_capacity_valid(const PieceList& pieces, int carrier_id, const std::string& carrier_kind) {
+static bool carrier_capacity_valid(const PieceList& pieces, int carrier_id, PieceKind carrier_kind) {
     int af = 0, tank = 0, person = 0, other = 0;
-    auto bump = [&](const std::string& kind) {
-        if (kind == "Af") af++;
-        else if (kind == "T") tank++;
+    auto bump = [&](PieceKind kind) {
+        if (kind == PieceKind::AirForce) af++;
+        else if (kind == PieceKind::Tank) tank++;
         else if (is_person_payload_kind(kind)) person++;
         else other++;
     };
@@ -634,7 +708,7 @@ static bool carrier_capacity_valid(const PieceList& pieces, int carrier_id, cons
         if (p.carrier_id == carrier_id) bump(p.kind);
     }
 
-    if (carrier_kind == "N") {
+    if (carrier_kind == PieceKind::Navy) {
         if (other > 0) return false;
         if (af == 0 && tank <= 2 && person == 0) return true;
         if (tank == 0 && af <= 2 && person == 0) return true;
@@ -643,11 +717,11 @@ static bool carrier_capacity_valid(const PieceList& pieces, int carrier_id, cons
         if (af == 0 && tank == 0 && person <= 1) return true;
         return false;
     }
-    if (carrier_kind == "Af") {
+    if (carrier_kind == PieceKind::AirForce) {
         if (af > 0 || other > 0) return false;
         return (tank + person) <= 1;
     }
-    if (carrier_kind == "T") {
+    if (carrier_kind == PieceKind::Tank) {
         if (af > 0 || tank > 0 || other > 0) return false;
         return person <= 1;
     }
@@ -721,19 +795,19 @@ static bool is_carried_by_engineer(const Piece& p, const PieceList& pieces) {
     while (cid >= 0) {
         const Piece* c = piece_by_id_c(pieces, cid);
         if (!c) return false;
-        if (c->kind == "E") return true;
+        if (c->kind == PieceKind::Engineer) return true;
         cid = c->carrier_id;
     }
     return false;
 }
 
-static bool in_aa_range(const PieceList& pieces, int col, int row, const std::string& player) {
+static bool in_aa_range(const PieceList& pieces, int col, int row, Player player) {
     for (auto& p : pieces) {
         if (p.player == player) continue; // only enemy
         int d = std::max(std::abs(p.col-col), std::abs(p.row-row));
-        if (p.kind=="Aa" && d<=1) return true;
-        if (p.kind=="Ms" && d<=2) return true;
-        if (p.kind=="N"  && d<=1) return true;
+        if (p.kind == PieceKind::AntiAircraft && d<=1) return true;
+        if (p.kind == PieceKind::Missile && d<=2) return true;
+        if (p.kind == PieceKind::Navy  && d<=1) return true;
     }
     return false;
 }
@@ -853,7 +927,7 @@ struct MoveGenContext {
     int commander_sq[2]{-1, -1};
 };
 
-static inline int player_idx(const std::string& p) { return p=="red" ? 0 : 1; }
+static inline int player_idx(Player p) { return p == Player::Red ? 0 : 1; }
 
 static MoveGenContext build_movegen_context(const PieceList& pieces) {
     MoveGenContext ctx;
@@ -869,15 +943,15 @@ static MoveGenContext build_movegen_context(const PieceList& pieces) {
         ctx.occ_all.set(sq);
         int pl = player_idx(p.player);
         ctx.occ_by_player[pl].set(sq);
-        if (p.kind == "C") ctx.commander_sq[pl] = sq;
+        if (p.kind == PieceKind::Commander) ctx.commander_sq[pl] = sq;
     }
 
     // Precompute anti-air coverage for each side (Aa/N range 1, Ms range 2).
     for (const Piece& p : pieces) {
         if (!on_board(p.col, p.row)) continue;
         int radius = 0;
-        if (p.kind == "Aa" || p.kind == "N") radius = 1;
-        else if (p.kind == "Ms") radius = 2;
+        if (p.kind == PieceKind::AntiAircraft || p.kind == PieceKind::Navy) radius = 1;
+        else if (p.kind == PieceKind::Missile) radius = 2;
         if (radius == 0) continue;
         int pl = player_idx(p.player);
         for (int dc = -radius; dc <= radius; dc++) {
@@ -894,16 +968,16 @@ static MoveGenContext build_movegen_context(const PieceList& pieces) {
 
 static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ctx) {
     BB132 res;
-    const std::string& k = piece.kind;
+    PieceKind k = piece.kind;
     int col = piece.col, row = piece.row;
     bool hero = piece.hero;
 
     if (!on_board(col, row)) return res;
-    if (k == "H" && !hero) return res;
+    if (k == PieceKind::HQ && !hero) return res;
 
     int rng = 0;
     bool use_diag = false;
-    if (k == "H") {
+    if (k == PieceKind::HQ) {
         // Heroic headquarters moves like heroic infantry.
         rng = 2;
         use_diag = true;
@@ -919,7 +993,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
     int from_sq = sq_index(col, row);
 
     auto add_sq = [&](int c, int r) {
-        if (piece.kind != "C" && is_hq_square(c, r)) return;
+        if (piece.kind != PieceKind::Commander && is_hq_square(c, r)) return;
         if (on_board(c, r)) res.set(sq_index(c, r));
     };
     auto piece_index_at = [&](int c, int r) -> int {
@@ -942,7 +1016,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         }
     };
 
-    if (k == "C") {
+    if (k == PieceKind::Commander) {
         for (int dir : ORTHO_DIRS) {
             for_each_ray(dir, rng, [&](int nc, int nr, int s) {
                 int pi = piece_index_at(nc, nr);
@@ -990,7 +1064,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         return filtered;
     }
 
-    if (k == "N") {
+    if (k == PieceKind::Navy) {
         for (int dir : ORTHO_DIRS) {
             for_each_ray(dir, rng, [&](int nc, int nr, int) {
                 if (!is_navigable(nc, nr)) return false;
@@ -1035,7 +1109,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
                     if (player_idx(t.player) != me) {
                         // Gunboat: ground targets capped at range 3
                         // Anti-ship missile: enemy Navy up to full range
-                        if (t.kind == "N" || (is_ground_piece_kind(t.kind) && s <= 3)) {
+                        if (t.kind == PieceKind::Navy || (is_ground_piece_kind(t.kind) && s <= 3)) {
                             add_sq(nc, nr);
                         }
                     }
@@ -1047,7 +1121,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         return res;
     }
 
-    if (k == "Af") {
+    if (k == PieceKind::AirForce) {
         int dirs[8][2] = {{0,1},{0,-1},{1,0},{-1,0},{1,1},{1,-1},{-1,1},{-1,-1}};
         int ndirs = use_diag ? 8 : 4;
         auto path_hits_enemy_aa = [&](int dx, int dy, int steps) -> bool {
@@ -1072,7 +1146,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
                     if (pi >= 0) {
                         const Piece& t = (*ctx.pieces)[pi];
                         // Capture landing is legal even inside AA (kamikaze resolved in apply_move).
-                        if (player_idx(t.player) != me && t.kind == "N") add_sq(nc, nr);
+                        if (player_idx(t.player) != me && t.kind == PieceKind::Navy) add_sq(nc, nr);
                         else if (player_idx(t.player) == me &&
                                  can_stack_together(*ctx.pieces, piece, t) &&
                                  !dest_in_enemy_aa) add_sq(nc, nr);
@@ -1095,7 +1169,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         return res;
     }
 
-    if (k == "A") {
+    if (k == PieceKind::Artillery) {
         int dirs[8][2] = {{0,1},{0,-1},{1,0},{-1,0},{1,1},{1,-1},{-1,1},{-1,-1}};
         int ndirs = use_diag ? 8 : 4;
         bool eng_carried = is_carried_by_engineer(piece, *ctx.pieces);
@@ -1131,7 +1205,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         return res;
     }
 
-    if (k == "Aa") {
+    if (k == PieceKind::AntiAircraft) {
         bool eng_carried = is_carried_by_engineer(piece, *ctx.pieces);
         for (int dir : ORTHO_DIRS) {
             for_each_ray(dir, rng, [&](int nc, int nr, int) {
@@ -1150,7 +1224,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         return res;
     }
 
-    if (k == "Ms") {
+    if (k == PieceKind::Missile) {
         bool eng_carried = is_carried_by_engineer(piece, *ctx.pieces);
         for (int dir : ORTHO_DIRS) {
             for_each_ray(dir, rng, [&](int nc, int nr, int) {
@@ -1180,7 +1254,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
                 int pi = piece_index_at(nc, nr);
                 if (pi >= 0) {
                     const Piece& tp = (*ctx.pieces)[pi];
-                    if (player_idx(tp.player) != me && tp.kind != "N" && !is_sea(nc, nr))
+                    if (player_idx(tp.player) != me && tp.kind != PieceKind::Navy && !is_sea(nc, nr))
                         add_sq(nc, nr);
                 }
             }
@@ -1188,7 +1262,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
         return res;
     }
 
-    if (k == "E") {
+    if (k == PieceKind::Engineer) {
         for (int dir : ORTHO_DIRS) {
             for_each_ray(dir, 1, [&](int nc, int nr, int) {
                 if (is_sea(nc, nr)) return false;
@@ -1223,7 +1297,7 @@ static BB132 get_move_mask_bitboard(const Piece& piece, const MoveGenContext& ct
 
     // Tank sea-capture: Tank can stand still to capture enemy pieces at sea (range up to 2).
     // This is a fire-only action — the Tank does not move onto the sea square.
-    if (k == "T") {
+    if (k == PieceKind::Tank) {
         for (int dir : ORTHO_DIRS) {
             for_each_ray(dir, rng, [&](int nc, int nr, int) {
                 int pi = piece_index_at(nc, nr);
@@ -1264,7 +1338,7 @@ static bool has_legal_destination(const Piece& piece, const PieceList& pieces,
 }
 
 static bool square_capturable_by_player(const PieceList& pieces, int col, int row,
-                                        const std::string& by_player) {
+                                        Player by_player) {
     if (!on_board(col, row)) return false;
     int target_sq = sq_index(col, row);
     MoveGenContext ctx = build_movegen_context(pieces);
@@ -1287,7 +1361,7 @@ static void promote_heroes_from_checks(PieceList& pieces) {
             if (!on_board(p.col, p.row)) continue;
             const Piece* enemy_cmd = nullptr;
             for (const auto& q : pieces) {
-                if (q.player == opp(p.player) && q.kind == "C") {
+                if (q.player == opp(p.player) && q.kind == PieceKind::Commander) {
                     enemy_cmd = &q;
                     break;
                 }
@@ -1300,13 +1374,13 @@ static void promote_heroes_from_checks(PieceList& pieces) {
         }
 
         // Last-protector rule: if only one non-Commander, non-HQ piece remains, it becomes heroic.
-        for (const std::string side : {"red", "blue"}) {
+        for (Player side : {Player::Red, Player::Blue}) {
             int remaining_eligible = 0;
             int last_idx = -1;
             for (int i = 0; i < (int)pieces.size(); i++) {
                 const Piece& p = pieces[i];
                 if (p.player != side || !on_board(p.col, p.row)) continue;
-                if (p.kind == "C" || p.kind == "H") continue;
+                if (p.kind == PieceKind::Commander || p.kind == PieceKind::HQ) continue;
                 remaining_eligible++;
                 last_idx = i;
                 if (remaining_eligible > 1) break;
@@ -1357,38 +1431,38 @@ static const char* game_mode_name(GameMode mode) {
     }
 }
 
-static std::string check_win(const PieceList& pieces, const std::string& last) {
-    std::string op = opp(last);
+static std::string check_win(const PieceList& pieces, Player last) {
+    Player op = opp(last);
     int cnt_C=0, cnt_N=0, cnt_Af=0, cnt_T=0, cnt_In=0, cnt_A=0;
     for (auto& p : pieces) {
         if (p.player != op) continue;
         if (!on_board(p.col, p.row)) continue;
-        if (p.kind=="C")  cnt_C++;
-        if (p.kind=="N")  cnt_N++;
-        if (p.kind=="Af") cnt_Af++;
-        if (p.kind=="T")  cnt_T++;
-        if (p.kind=="In") cnt_In++;
-        if (p.kind=="A")  cnt_A++;
+        if (p.kind == PieceKind::Commander)  cnt_C++;
+        if (p.kind == PieceKind::Navy)  cnt_N++;
+        if (p.kind == PieceKind::AirForce) cnt_Af++;
+        if (p.kind == PieceKind::Tank)  cnt_T++;
+        if (p.kind == PieceKind::Infantry) cnt_In++;
+        if (p.kind == PieceKind::Artillery)  cnt_A++;
     }
     bool commander_captured = (cnt_C == 0);
 
     switch (g_game_mode) {
     case GameMode::MARINE_BATTLE:
-        if (commander_captured) return last + " wins — Commander captured!";
-        if (cnt_N == 0)         return last + " wins — Naval division destroyed!";
+        if (commander_captured) return player_to_string(last) + " wins — Commander captured!";
+        if (cnt_N == 0)         return player_to_string(last) + " wins — Naval division destroyed!";
         break;
     case GameMode::AIR_BATTLE:
-        if (commander_captured) return last + " wins — Commander captured!";
-        if (cnt_Af == 0)        return last + " wins — Air Force destroyed!";
+        if (commander_captured) return player_to_string(last) + " wins — Commander captured!";
+        if (cnt_Af == 0)        return player_to_string(last) + " wins — Air Force destroyed!";
         break;
     case GameMode::LAND_BATTLE:
-        if (commander_captured) return last + " wins — Commander captured!";
+        if (commander_captured) return player_to_string(last) + " wins — Commander captured!";
         if (cnt_T == 0 && cnt_In == 0 && cnt_A == 0)
-            return last + " wins — Land division destroyed!";
+            return player_to_string(last) + " wins — Land division destroyed!";
         break;
     case GameMode::FULL_BATTLE:
     default:
-        if (commander_captured) return last + " wins — Commander captured!";
+        if (commander_captured) return player_to_string(last) + " wins — Commander captured!";
         break;
     }
     return "";
@@ -1401,24 +1475,24 @@ static std::string check_win(const PieceList& pieces, const std::string& last) {
 static PieceList make_initial_pieces() {
     PieceList all;
     int pid = 0;
-    auto add = [&](const std::string& player, const std::string& kind, int col, int row) {
-        all.push_back({pid++, player, kind, col, row, false, -1});
+    auto add = [&](Player player, PieceKind kind, int8_t col, int8_t row) {
+        all.push_back({(int16_t)pid++, player, kind, (int8_t)col, (int8_t)row, false, -1});
     };
     // Official setup (Figure 4 in the rulebook), mirrored by side.
     // RED — bottom half
-    add("red","C",  6,0);
-    add("red","N",  1,1);
-    add("red","Af", 4,1); add("red","H", 5,1); add("red","H", 7,1); add("red","Af", 8,1);
-    add("red","A",  3,2); add("red","Ms",6,2); add("red","A", 9,2);
-    add("red","N",  2,3); add("red","Aa",4,3); add("red","T", 5,3); add("red","T", 7,3); add("red","Aa",8,3);
-    add("red","In",2,4); add("red","E", 3,4); add("red","M", 6,4); add("red","E", 9,4); add("red","In",10,4);
+    add(Player::Red, PieceKind::Commander,  6,0);
+    add(Player::Red, PieceKind::Navy,  1,1);
+    add(Player::Red, PieceKind::AirForce, 4,1); add(Player::Red, PieceKind::HQ, 5,1); add(Player::Red, PieceKind::HQ, 7,1); add(Player::Red, PieceKind::AirForce, 8,1);
+    add(Player::Red, PieceKind::Artillery,  3,2); add(Player::Red, PieceKind::Missile,6,2); add(Player::Red, PieceKind::Artillery, 9,2);
+    add(Player::Red, PieceKind::Navy,  2,3); add(Player::Red, PieceKind::AntiAircraft,4,3); add(Player::Red, PieceKind::Tank, 5,3); add(Player::Red, PieceKind::Tank, 7,3); add(Player::Red, PieceKind::AntiAircraft,8,3);
+    add(Player::Red, PieceKind::Infantry,2,4); add(Player::Red, PieceKind::Engineer, 3,4); add(Player::Red, PieceKind::Militia, 6,4); add(Player::Red, PieceKind::Engineer, 9,4); add(Player::Red, PieceKind::Infantry,10,4);
 
     // BLUE — top half
-    add("blue","In",10,7); add("blue","E", 9,7); add("blue","M", 6,7); add("blue","E", 3,7); add("blue","In",2,7);
-    add("blue","Aa",8,8); add("blue","T", 7,8); add("blue","T", 5,8); add("blue","Aa",4,8); add("blue","N",2,8);
-    add("blue","A", 9,9); add("blue","Ms",6,9); add("blue","A", 3,9);
-    add("blue","Af",8,10); add("blue","H",7,10); add("blue","H",5,10); add("blue","Af",4,10); add("blue","N",1,10);
-    add("blue","C", 6,11);
+    add(Player::Blue, PieceKind::Infantry,10,7); add(Player::Blue, PieceKind::Engineer, 9,7); add(Player::Blue, PieceKind::Militia, 6,7); add(Player::Blue, PieceKind::Engineer, 3,7); add(Player::Blue, PieceKind::Infantry,2,7);
+    add(Player::Blue, PieceKind::AntiAircraft,8,8); add(Player::Blue, PieceKind::Tank, 7,8); add(Player::Blue, PieceKind::Tank, 5,8); add(Player::Blue, PieceKind::AntiAircraft,4,8); add(Player::Blue, PieceKind::Navy,2,8);
+    add(Player::Blue, PieceKind::Artillery, 9,9); add(Player::Blue, PieceKind::Missile,6,9); add(Player::Blue, PieceKind::Artillery, 3,9);
+    add(Player::Blue, PieceKind::AirForce,8,10); add(Player::Blue, PieceKind::HQ,7,10); add(Player::Blue, PieceKind::HQ,5,10); add(Player::Blue, PieceKind::AirForce,4,10); add(Player::Blue, PieceKind::Navy,1,10);
+    add(Player::Blue, PieceKind::Commander, 6,11);
     // Note: heroic status is granted only when a piece delivers check during gameplay,
     // not at initial setup. Do NOT call promote_heroes_from_checks here.
     return all;
@@ -1686,7 +1760,7 @@ static inline int phase_from_material_sum(int mat_sum) {
 static int compute_game_phase(const PieceList& pieces) {
     int mat = 0;
     for (auto& p : pieces) {
-        if (p.kind == "C" || p.kind == "H") continue;
+        if (p.kind == PieceKind::Commander || p.kind == PieceKind::HQ) continue;
         int v = piece_value_fast(p.kind);
         mat += v;
     }
@@ -1695,42 +1769,42 @@ static int compute_game_phase(const PieceList& pieces) {
 
 // Interpolate between midgame and endgame PST values.
 // phase: 256=midgame, 0=endgame.
-static int get_pst_phased(const std::string& kind, const std::string& player,
+static int get_pst_phased(PieceKind kind, Player player,
                           int col, int row, int phase) {
-    int r = (player == "blue") ? row : (11 - row);
+    int r = (player == Player::Blue) ? row : (11 - row);
     if (r<0||r>11||col<0||col>10) return 0;
     int mg = 0, eg = 0;
-    if      (kind=="C")                    { mg = PST_C_MG[r][col];  eg = PST_C_EG[r][col]; }
-    else if (kind=="In"||kind=="M"||kind=="E") { mg = PST_In_MG[r][col]; eg = PST_In_EG[r][col]; }
-    else if (kind=="T")                    { mg = PST_T_MG[r][col];  eg = PST_T_EG[r][col]; }
-    else if (kind=="A")                    { mg = PST_A_MG[r][col];  eg = PST_A_EG[r][col]; }
-    else if (kind=="Af")                   { mg = PST_Af_MG[r][col]; eg = PST_Af_EG[r][col]; }
-    else if (kind=="N")                    { mg = PST_N_MG[r][col];  eg = PST_N_EG[r][col]; }
-    else if (kind=="Aa")                   { mg = PST_Aa_MG[r][col]; eg = PST_Aa_EG[r][col]; }
-    else if (kind=="Ms")                   { mg = PST_Ms_MG[r][col]; eg = PST_Ms_EG[r][col]; }
+    if      (kind == PieceKind::Commander)                    { mg = PST_C_MG[r][col];  eg = PST_C_EG[r][col]; }
+    else if (kind == PieceKind::Infantry||kind == PieceKind::Militia||kind == PieceKind::Engineer) { mg = PST_In_MG[r][col]; eg = PST_In_EG[r][col]; }
+    else if (kind == PieceKind::Tank)                    { mg = PST_T_MG[r][col];  eg = PST_T_EG[r][col]; }
+    else if (kind == PieceKind::Artillery)                    { mg = PST_A_MG[r][col];  eg = PST_A_EG[r][col]; }
+    else if (kind == PieceKind::AirForce)                   { mg = PST_Af_MG[r][col]; eg = PST_Af_EG[r][col]; }
+    else if (kind == PieceKind::Navy)                    { mg = PST_N_MG[r][col];  eg = PST_N_EG[r][col]; }
+    else if (kind == PieceKind::AntiAircraft)                   { mg = PST_Aa_MG[r][col]; eg = PST_Aa_EG[r][col]; }
+    else if (kind == PieceKind::Missile)                   { mg = PST_Ms_MG[r][col]; eg = PST_Ms_EG[r][col]; }
     else return 0;
     return (mg * phase + eg * (256 - phase)) / 256;
 }
 
 // Legacy wrapper for quick_eval (uses midgame PST as approximation)
-static int get_pst(const std::string& kind, const std::string& player, int col, int row) {
+static int get_pst(PieceKind kind, Player player, int col, int row) {
     return get_pst_phased(kind, player, col, row, 160); // ~60% midgame default
 }
 
 static inline int piece_phase_material(const Piece& p) {
-    if (p.kind == "C" || p.kind == "H") return 0;
+    if (p.kind == PieceKind::Commander || p.kind == PieceKind::HQ) return 0;
     return piece_value_fast(p.kind);
 }
 
 static inline int piece_base_term_mg(const Piece& p) {
-    if (p.kind == "H") return 0;
+    if (p.kind == PieceKind::HQ) return 0;
     int mat = piece_value_fast(p.kind);
     if (p.hero) mat = (mat * 3) / 2;
     return mat + get_pst_phased(p.kind, p.player, p.col, p.row, 256) * 2;
 }
 
 static inline int piece_base_term_eg(const Piece& p) {
-    if (p.kind == "H") return 0;
+    if (p.kind == PieceKind::HQ) return 0;
     int mat = piece_value_fast(p.kind);
     if (p.hero) mat = (mat * 3) / 2;
     return mat + get_pst_phased(p.kind, p.player, p.col, p.row, 0) * 2;
@@ -1756,7 +1830,7 @@ static inline bool valid_move_hint(const MoveTriple& m) {
 
 // Internal implementation shared by both checked and unchecked apply_move variants.
 // Mutates `np` in place and returns true on success, false on invalid move.
-static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr, const std::string& player) {
+static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr, Player player) {
     Piece* piece = piece_by_id(np, piece_id);
     if (!piece || piece->player != player) return false;
     if (!on_board(dc, dr)) return false;
@@ -1766,8 +1840,8 @@ static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr,
 
     Piece* target = piece_at(np, dc, dr);
     const bool enemy_target = (target && target->player != player);
-    bool navy_stays = (piece->kind=="N" && enemy_target && !is_navigable(dc,dr))
-                    || (piece->kind=="T" && enemy_target && is_sea(dc,dr));
+    bool navy_stays = (piece->kind == PieceKind::Navy && enemy_target && !is_navigable(dc,dr))
+                    || (piece->kind == PieceKind::Tank && enemy_target && is_sea(dc,dr));
 
     // Friendly-stack move (load / board)
     if (target && target->player == player) {
@@ -1796,7 +1870,7 @@ static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr,
         if (piece->carrier_id >= 0) piece->carrier_id = -1; // split from carrier
 
         // Non-hero AF entering enemy AA ring is shot down.
-        if (piece->kind=="Af" && !piece->hero && in_aa_range(np, dc, dr, player)) {
+        if (piece->kind == PieceKind::AirForce && !piece->hero && in_aa_range(np, dc, dr, player)) {
             remove_piece_with_carried(np, piece->id);
             promote_heroes_from_checks(np);
             return true;
@@ -1809,7 +1883,7 @@ static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr,
         }
 
         // Bombardment return-to-base: after a land capture (not Navy, not Aircraft), AF may return if landing is unsafe.
-        if (piece->kind == "Af" && captured_before.kind != "N" && captured_before.kind != "Af" && !navy_stays) {
+        if (piece->kind == PieceKind::AirForce && captured_before.kind != PieceKind::Navy && captured_before.kind != PieceKind::AirForce && !navy_stays) {
             if (square_capturable_by_player(np, dc, dr, opp(player))) {
                 piece->col = src_col;
                 piece->row = src_row;
@@ -1828,14 +1902,14 @@ static bool apply_move_impl_inplace(PieceList& np, int piece_id, int dc, int dr,
     return true;
 }
 
-static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+static PieceList apply_move_impl(const PieceList& pieces, int piece_id, int dc, int dr, Player player) {
     PieceList np = pieces;
     if (!apply_move_impl_inplace(np, piece_id, dc, dr, player)) return pieces;
     return np;
 }
 
 // Checked version: verifies legality before applying. Used by GUI and opening book.
-static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int dr, Player player) {
     const Piece* piece = piece_by_id_c(pieces, piece_id);
     if (!piece || piece->player != player) return pieces;
     if (!on_board(dc, dr)) return pieces;
@@ -1845,17 +1919,17 @@ static PieceList apply_move(const PieceList& pieces, int piece_id, int dc, int d
 
 // Unchecked version: skips redundant legality check. Used by search when legality
 // was already verified by the caller (saves a full move generation per search node).
-static bool apply_move_unchecked_inplace(PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+static bool apply_move_unchecked_inplace(PieceList& pieces, int piece_id, int dc, int dr, Player player) {
     return apply_move_impl_inplace(pieces, piece_id, dc, dr, player);
 }
 
-static PieceList apply_move_unchecked(const PieceList& pieces, int piece_id, int dc, int dr, const std::string& player) {
+static PieceList apply_move_unchecked(const PieceList& pieces, int piece_id, int dc, int dr, Player player) {
     return apply_move_impl(pieces, piece_id, dc, dr, player);
 }
 
 using AllMoves = std::vector<MoveTriple>;
 
-static AllMoves all_moves_for(const PieceList& pieces, const std::string& player) {
+static AllMoves all_moves_for(const PieceList& pieces, Player player) {
     AllMoves result;
     result.reserve(256);
     MoveGenContext ctx = build_movegen_context(pieces);
@@ -1873,7 +1947,7 @@ static AllMoves all_moves_for(const PieceList& pieces, const std::string& player
 }
 
 // True if `player` can win immediately in one move from `pieces`.
-static bool has_immediate_winning_move(const PieceList& pieces, const std::string& player) {
+static bool has_immediate_winning_move(const PieceList& pieces, Player player) {
     AllMoves moves = all_moves_for(pieces, player);
     for (auto& m : moves) {
         PieceList np = apply_move(pieces, m.pid, m.dc, m.dr, player);
@@ -1892,12 +1966,12 @@ static int quick_piece_unit_score(const Piece& p) {
     return val;
 }
 
-static int quick_piece_score_cpu(const Piece& p, const std::string& cpu_player) {
+static int quick_piece_score_cpu(const Piece& p, Player cpu_player) {
     int s = quick_piece_unit_score(p);
     return p.player == cpu_player ? s : -s;
 }
 
-static int quick_eval_cpu(const PieceList& pieces, const std::string& cpu_player) {
+static int quick_eval_cpu(const PieceList& pieces, Player cpu_player) {
     int v = 0;
     for (auto& p : pieces) v += quick_piece_score_cpu(p, cpu_player);
     return v;
@@ -1914,7 +1988,7 @@ struct AttackCache {
 struct SearchState {
     static constexpr int kFastIdMax = 512;
     PieceList pieces;
-    std::string turn;
+    Player turn;
     uint64_t hash = 0;
     int quick_eval = 0; // from CPU perspective (incremental mg/eg blend)
     AttackCache atk;
@@ -1959,9 +2033,9 @@ struct SearchState {
             if (p.carrier_id < 0 && on_board(p.col, p.row)) {
                 sq_to_piece_idx[(std::size_t)sq_index(p.col, p.row)] = (int16_t)i;
             }
-            int pi = (p.player == "red") ? 0 : 1;
-            if (p.kind == "C") { cmd_col[pi] = p.col; cmd_row[pi] = p.row; }
-            if (p.kind == "N") navy_count[pi]++;
+            int pi = (p.player == Player::Red) ? 0 : 1;
+            if (p.kind == PieceKind::Commander) { cmd_col[pi] = p.col; cmd_row[pi] = p.row; }
+            if (p.kind == PieceKind::Navy) navy_count[pi]++;
             mg_base_side[pi] += piece_base_term_mg(p);
             eg_base_side[pi] += piece_base_term_eg(p);
             phase_material += piece_phase_material(p);
@@ -1978,13 +2052,13 @@ struct UndoMove {
     Piece moved_piece{};
     Piece captured_piece{};
     bool had_capture = false;
-    std::string turn_before;
+    Player turn_before;
     uint64_t hash_before = 0;
     int quick_eval_before = 0;
 };
 
-static SearchState make_search_state(const PieceList& pieces, const std::string& turn,
-                                     const std::string& cpu_player);
+static SearchState make_search_state(const PieceList& pieces, Player turn,
+                                     Player cpu_player);
 
 static int find_piece_idx_by_id(const PieceList& pieces, int pid) {
     for (int i = 0; i < (int)pieces.size(); i++) if (pieces[i].id == pid) return i;
@@ -2047,7 +2121,7 @@ static bool validate_state(const PieceList& pieces) {
 
 // Sim-mode validator: catches corrupted states early and prints useful crash context.
 static bool validate_state_for_sim(const PieceList& pieces,
-                                   const std::string& last_mover,
+                                   Player last_mover,
                                    std::string* reason = nullptr) {
     constexpr int kFastIdMax = 512;
     std::array<uint8_t, kFastIdMax> id_seen{};
@@ -2083,9 +2157,9 @@ static bool validate_state_for_sim(const PieceList& pieces,
             }
             occ[(std::size_t)sq] = 1;
         }
-        if (p.kind == "C") {
-            if (p.player == "red") red_cmd++;
-            else if (p.player == "blue") blue_cmd++;
+        if (p.kind == PieceKind::Commander) {
+            if (p.player == Player::Red) red_cmd++;
+            else if (p.player == Player::Blue) blue_cmd++;
         }
     }
 
@@ -2142,7 +2216,7 @@ static void build_attack_cache(SearchState& st) {
     st.atk.attacked_square_count[1] = 0;
     MoveGenContext ctx = build_movegen_context(st.pieces);
     for (auto& p : st.pieces) {
-        int pl = (p.player=="red") ? 0 : 1;
+        int pl = (p.player == Player::Red) ? 0 : 1;
         BB132 attacks = get_move_mask_bitboard(p, ctx);
         st.atk.attacked_any[pl].or_bits(attacks);
         while (true) {
@@ -2165,7 +2239,7 @@ static inline void ensure_attack_cache(SearchState& st) {
 }
 
 static bool make_move_inplace(SearchState& st, const MoveTriple& m,
-                              const std::string& cpu_player, UndoMove& u);
+                              Player cpu_player, UndoMove& u);
 
 static void unmake_move_inplace(SearchState& st, const UndoMove& u);
 
@@ -2395,21 +2469,10 @@ static inline void tt_prefetch(uint64_t h) {
 // Zobrist hashing (flattened piece-state x 132-square table)
 static uint64_t g_ZobristTurn[2];
 
-// Fast kind_index: direct char-based switch (no map lookup)
-static int kind_index(const std::string& k) {
-    if (k.empty()) return 0;
-    switch (k[0]) {
-        case 'C': return 0;
-        case 'H': return 1;
-        case 'I': return 2;  // In
-        case 'M': return (k.size()>1 && k[1]=='s') ? 8 : 3;  // Ms vs M
-        case 'T': return 4;
-        case 'E': return 5;
-        case 'A': if (k.size()>1) { if (k[1]=='a') return 7; if (k[1]=='f') return 9; }
-                  return 6;  // A
-        case 'N': return 10;
-        default: return 0;
-    }
+// Fast kind_index: direct enum cast
+static int kind_index(PieceKind k) {
+    if (k == PieceKind::None) return 0;
+    return static_cast<int>(k) - 1;
 }
 
 static constexpr int ZK_KINDS   = 11;
@@ -2422,7 +2485,7 @@ static uint64_t g_ZK_piece_sq[ZK_STATES][ZK_SQUARES];
 
 static inline int zobrist_piece_state_index(const Piece& p) {
     int ki = kind_index(p.kind);
-    int pl = p.player=="red" ? 0 : 1;
+    int pl = p.player == Player::Red ? 0 : 1;
     int hi = p.hero ? 1 : 0;
     int ci = (p.carrier_id >= 0) ? 1 : 0;
     return (((ki * ZK_PLAYERS + pl) * ZK_HERO + hi) * ZK_CARRIED + ci);
@@ -2446,8 +2509,8 @@ static void init_zobrist() {
     g_ZobristTurn[1] = splitmix64_next(seed);
 }
 
-static uint64_t zobrist_hash(const PieceList& pieces, const std::string& turn) {
-    uint64_t h = g_ZobristTurn[turn=="red" ? 0 : 1];
+static uint64_t zobrist_hash(const PieceList& pieces, Player turn) {
+    uint64_t h = g_ZobristTurn[turn == Player::Red ? 0 : 1];
     for (auto& p : pieces) {
         if (p.row>=0 && p.row<12 && p.col>=0 && p.col<11) {
             int sq = sq_index(p.col, p.row);
@@ -2457,9 +2520,9 @@ static uint64_t zobrist_hash(const PieceList& pieces, const std::string& turn) {
     return h;
 }
 
-static inline uint64_t zobrist_cpu_perspective_salt(const std::string& cpu_player) {
+static inline uint64_t zobrist_cpu_perspective_salt(Player cpu_player) {
     // Keep TT keys disjoint across root perspective in self-play (red-search vs blue-search).
-    return (cpu_player == "red") ? 0x9E3779B97F4A7C15ULL : 0ULL;
+    return (cpu_player == Player::Red) ? 0x9E3779B97F4A7C15ULL : 0ULL;
 }
 
 static inline uint64_t zobrist_piece_key(const Piece& p) {
@@ -2468,12 +2531,12 @@ static inline uint64_t zobrist_piece_key(const Piece& p) {
     return g_ZK_piece_sq[zobrist_piece_state_index(p)][sq];
 }
 
-static SearchState make_search_state(const PieceList& pieces, const std::string& turn,
-                                     const std::string& cpu_player) {
+static SearchState make_search_state(const PieceList& pieces, Player turn,
+                                     Player cpu_player) {
     SearchState st;
     st.pieces = pieces;
     st.turn = turn;
-    st.cpu_side = (cpu_player == "red") ? 0 : 1;
+    st.cpu_side = (cpu_player == Player::Red) ? 0 : 1;
     st.hash = zobrist_hash(st.pieces, st.turn) ^ zobrist_cpu_perspective_salt(cpu_player);
     st.atk.valid = false;
     st.rebuild_caches();
@@ -2482,7 +2545,7 @@ static SearchState make_search_state(const PieceList& pieces, const std::string&
 
 // === CHANGED ===
 static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
-                                       const std::string& cpu_player, UndoMove& u) {
+                                       Player cpu_player, UndoMove& u) {
     u = UndoMove{};
     if (!on_board(m.dc, m.dr)) return false;
     int moved_idx = find_piece_idx_by_id_fast(st, m.pid);
@@ -2524,7 +2587,7 @@ static bool make_move_inplace_snapshot(SearchState& st, const MoveTriple& m,
  * that canonical path to avoid incremental state-corruption bugs.
  */
 static bool make_move_inplace(SearchState& st, const MoveTriple& m,
-                              const std::string& cpu_player, UndoMove& u) {
+                              Player cpu_player, UndoMove& u) {
     return make_move_inplace_snapshot(st, m, cpu_player, u);
 
 #if 0
@@ -2555,7 +2618,7 @@ static void unmake_move_inplace(SearchState& st, const UndoMove& u) {
 
 // === CHANGED ===
 // Move-generator regression helper.
-static uint64_t perft_impl(SearchState& st, int depth, const std::string& cpu_player) {
+static uint64_t perft_impl(SearchState& st, int depth, Player cpu_player) {
     if (depth <= 0) return 1ULL;
     AllMoves moves = all_moves_for(st.pieces, st.turn);
     if (depth == 1) return (uint64_t)moves.size();
@@ -2569,14 +2632,14 @@ static uint64_t perft_impl(SearchState& st, int depth, const std::string& cpu_pl
     return nodes;
 }
 
-static uint64_t perft(const PieceList& pieces, const std::string& turn, int depth) {
+static uint64_t perft(const PieceList& pieces, Player turn, int depth) {
     SearchState st = make_search_state(pieces, turn, turn);
     return perft_impl(st, depth, turn);
 }
 
 static uint64_t perft(int depth) {
     PieceList init = make_initial_pieces();
-    return perft(init, "red", depth);
+    return perft(init, Player::Red, depth);
 }
 
 // ── Killer moves & History ─────────────────────────────────────────────────
@@ -2816,8 +2879,8 @@ static const int CORR_WEIGHT_DENOM  = 256;    // fixed-point denominator
 static int material_corr_key(const PieceList& pieces, int pi) {
     int key = 0;
     for (const auto& p : pieces) {
-        if (p.kind == "H") continue;
-        int side = (p.player == "red") ? 0 : 1;
+        if (p.kind == PieceKind::HQ) continue;
+        int side = (p.player == Player::Red) ? 0 : 1;
         int sign = (side == pi) ? 1 : -1;
         key += sign * piece_value_fast(p.kind) / 50;
     }
@@ -2850,17 +2913,17 @@ static int terrain_corr_key(const PieceList& pieces, int pi) {
     for (const auto& p : pieces) {
         int s = player_idx(p.player);
         if (!on_board(p.col, p.row)) continue;
-        if (is_sea(p.col, p.row)) sea_occ[s] += (p.kind == "N") ? 2 : 1;
-        if (p.row == 5 || p.row == 6) river_occ[s] += (p.kind == "E") ? 2 : 1;
-        if (p.kind == "Af") sky_control[s] += 3;
-        else if (p.kind == "Aa" || p.kind == "Ms") sky_control[s] += 2;
-        else if (p.kind == "N") sky_control[s] += 1;
-        if (p.kind == "C") { cmd_col[s] = p.col; cmd_row[s] = p.row; }
+        if (is_sea(p.col, p.row)) sea_occ[s] += (p.kind == PieceKind::Navy) ? 2 : 1;
+        if (p.row == 5 || p.row == 6) river_occ[s] += (p.kind == PieceKind::Engineer) ? 2 : 1;
+        if (p.kind == PieceKind::AirForce) sky_control[s] += 3;
+        else if (p.kind == PieceKind::AntiAircraft || p.kind == PieceKind::Missile) sky_control[s] += 2;
+        else if (p.kind == PieceKind::Navy) sky_control[s] += 1;
+        if (p.kind == PieceKind::Commander) { cmd_col[s] = p.col; cmd_row[s] = p.row; }
     }
 
     for (const auto& p : pieces) {
         int s = player_idx(p.player);
-        if (p.kind == "N" && cmd_col[s] >= 0 && commander_near_water_square(cmd_col[s], cmd_row[s])) {
+        if (p.kind == PieceKind::Navy && cmd_col[s] >= 0 && commander_near_water_square(cmd_col[s], cmd_row[s])) {
             int dist = std::abs(p.col - cmd_col[s]) + std::abs(p.row - cmd_row[s]);
             if (dist <= 4) navy_near_water_cmd[s] += (5 - dist);
         }
@@ -2911,7 +2974,7 @@ static int terrain_corr_key(const PieceList& pieces, int pi) {
 }
 
 static void update_correction_history(uint64_t hash, const PieceList& pieces,
-                                      const std::string& player, int depth,
+                                      Player player, int depth,
                                       int search_val, int raw_static_eval) {
     // Don't correct near-mate scores — they're exact.
     if (std::abs(search_val) >= 20000 || std::abs(raw_static_eval) >= 20000) return;
@@ -2954,7 +3017,7 @@ static void update_correction_history(uint64_t hash, const PieceList& pieces,
 // intentionally conservative to stabilize pruning without distorting eval shape.
 // enough to improve pruning without distorting the eval surface.
 static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
-                                 const std::string& player, int raw_eval) {
+                                 Player player, int raw_eval) {
     int pi = player_idx(player);
     if (pi < 0) return raw_eval;
     int hk = (int)((hash >> 4) & (CORR_HIST_SIZE - 1));
@@ -2977,7 +3040,7 @@ static int corrected_static_eval(uint64_t hash, const PieceList& pieces,
 // Returns the material gain/loss of a capture sequence on (col,row).
 // Positive = winning capture, negative = losing capture.
 static int see(const PieceList& pieces, int col, int row,
-               const std::string& attacker_player, int depth=0) {
+               Player attacker_player, int depth=0) {
     if (depth > 6) return 0;
     // Build context once for all pieces in this SEE node.
     MoveGenContext ctx = build_movegen_context(pieces);
@@ -3008,7 +3071,7 @@ static int see(const PieceList& pieces, int col, int row,
 // ── Move ordering ──────────────────────────────────────────────────────────
 static int score_move_for_order(const MoveTriple& m,
                                 const PieceList& pieces,
-                                const std::string& player,
+                                Player player,
                                 int ply,
                                 const MoveTriple* hash_move,
                                 const MoveTriple* pv_move,
@@ -3076,7 +3139,7 @@ struct MovePicker {
     std::size_t next_idx = 0;
 
     MovePicker(const AllMoves& moves, const PieceList& pieces,
-               const std::string& player, int ply,
+               Player player, int ply,
                const MoveTriple* hash_move,
                const MoveTriple* pv_move,
                const MoveTriple* prev_move,
@@ -3112,7 +3175,7 @@ struct MovePicker {
 };
 
 static AllMoves order_moves(const AllMoves& moves, const PieceList& pieces,
-                             const std::string& player, int ply,
+                             Player player, int ply,
                              const MoveTriple* hash_move,
                              const MoveTriple* pv_move = nullptr,
                              const MoveTriple* prev_move = nullptr,
@@ -3141,10 +3204,10 @@ static AllMoves order_moves(const AllMoves& moves, const PieceList& pieces,
 }
 
 static int attackers_to_square(const PieceList& pieces, int col, int row,
-                               const std::string& attacker_player,
+                               Player attacker_player,
                                const AttackCache* cache = nullptr) {
     if (cache && cache->valid) {
-        int pl = attacker_player=="red" ? 0 : 1;
+        int pl = attacker_player == Player::Red ? 0 : 1;
         return cache->counts[pl][row][col];
     }
     const int target_sq = sq_index(col, row);
@@ -3158,25 +3221,25 @@ static int attackers_to_square(const PieceList& pieces, int col, int row,
     return attackers;
 }
 
-static int count_kind_for(const PieceList& pieces, const std::string& player, const std::string& kind) {
+static int count_kind_for(const PieceList& pieces, Player player, PieceKind kind) {
     int n = 0;
     for (auto& p : pieces) if (p.player==player && p.kind==kind) n++;
     return n;
 }
 
-static bool side_has_only_pawn_militia_material(const PieceList& pieces, const std::string& player) {
+static bool side_has_only_pawn_militia_material(const PieceList& pieces, Player player) {
     bool has_non_commander = false;
     for (const auto& p : pieces) {
         if (p.player != player) continue;
-        if (p.kind == "C" || p.kind == "H") continue;
+        if (p.kind == PieceKind::Commander || p.kind == PieceKind::HQ) continue;
         has_non_commander = true;
-        if (p.kind != "In" && p.kind != "M") return false;
+        if (p.kind != PieceKind::Infantry && p.kind != PieceKind::Militia) return false;
     }
     return has_non_commander;
 }
 
-static int commander_attackers_cached(SearchState& st, const std::string& player) {
-    int pi = (player == "red") ? 0 : 1;
+static int commander_attackers_cached(SearchState& st, Player player) {
+    int pi = (player == Player::Red) ? 0 : 1;
     int cc = st.cmd_col[pi], cr = st.cmd_row[pi];
     if (cc < 0) return 0;
     ensure_attack_cache(st);
@@ -3194,18 +3257,18 @@ struct ObjectiveCounts {
     int carried_units = 0;
 };
 
-static ObjectiveCounts collect_objective_counts(const PieceList& pieces, const std::string& side) {
+static ObjectiveCounts collect_objective_counts(const PieceList& pieces, Player side) {
     ObjectiveCounts out;
     for (const auto& p : pieces) {
         if (p.player != side || !on_board(p.col, p.row)) continue;
-        if (p.kind != "H") out.active_non_hq++;
+        if (p.kind != PieceKind::HQ) out.active_non_hq++;
         if (p.carrier_id >= 0) out.carried_units++;
-        if (p.kind == "C") out.commander++;
-        else if (p.kind == "N") out.navy++;
-        else if (p.kind == "Af") out.air_force++;
-        else if (p.kind == "T") out.tank++;
-        else if (p.kind == "In") out.infantry++;
-        else if (p.kind == "A") out.artillery++;
+        if (p.kind == PieceKind::Commander) out.commander++;
+        else if (p.kind == PieceKind::Navy) out.navy++;
+        else if (p.kind == PieceKind::AirForce) out.air_force++;
+        else if (p.kind == PieceKind::Tank) out.tank++;
+        else if (p.kind == PieceKind::Infantry) out.infantry++;
+        else if (p.kind == PieceKind::Artillery) out.artillery++;
     }
     return out;
 }
@@ -3233,11 +3296,11 @@ static bool side_fulfills_win_objective(const ObjectiveCounts& self,
 //  • objective-complete decisive states (variant-specific)
 //  • practical fortress/no-progress draws
 //  • carrier-stacking loop-like dead-draw signatures
-static bool low_depth_special_outcome(SearchState& st, const std::string& perspective,
+static bool low_depth_special_outcome(SearchState& st, Player perspective,
                                       int depth_hint, int* out_score) {
     if (!out_score || depth_hint > 3) return false;
 
-    const std::string enemy = opp(perspective);
+    Player enemy = opp(perspective);
     ObjectiveCounts me = collect_objective_counts(st.pieces, perspective);
     ObjectiveCounts them = collect_objective_counts(st.pieces, enemy);
 
@@ -3258,7 +3321,7 @@ static bool low_depth_special_outcome(SearchState& st, const std::string& perspe
     if (me.commander == 0 || them.commander == 0) return false;
 
     ensure_attack_cache(st);
-    int my_pi = player_idx(perspective);
+    int my_pi = (perspective == Player::Red) ? 0 : 1;
     int op_pi = 1 - my_pi;
     int my_cc = st.cmd_col[my_pi], my_cr = st.cmd_row[my_pi];
     int op_cc = st.cmd_col[op_pi], op_cr = st.cmd_row[op_pi];
@@ -3275,7 +3338,7 @@ static bool low_depth_special_outcome(SearchState& st, const std::string& perspe
     AllMoves op_moves = all_moves_for(st.pieces, enemy);
     if (my_moves.empty() || op_moves.empty()) return false;
 
-    auto classify_activity = [&](const std::string& side,
+    auto classify_activity = [&](Player side,
                                  const AllMoves& moves,
                                  const Piece* enemy_cmd,
                                  int* captures,
@@ -3291,7 +3354,7 @@ static bool low_depth_special_outcome(SearchState& st, const std::string& perspe
             int idx = find_piece_idx_by_id(st.pieces, m.pid);
             if (idx < 0 || !enemy_cmd) continue;
             const Piece& p = st.pieces[idx];
-            if (p.kind == "C" || p.kind == "H") continue;
+            if (p.kind == PieceKind::Commander || p.kind == PieceKind::HQ) continue;
             int before = std::abs(p.col - enemy_cmd->col) + std::abs(p.row - enemy_cmd->row);
             int after = std::abs(m.dc - enemy_cmd->col) + std::abs(m.dr - enemy_cmd->row);
             if (after + 1 < before) (*progress)++;
@@ -3301,8 +3364,8 @@ static bool low_depth_special_outcome(SearchState& st, const std::string& perspe
     const Piece* my_enemy_cmd = nullptr;
     const Piece* op_enemy_cmd = nullptr;
     for (const auto& p : st.pieces) {
-        if (p.player == enemy && p.kind == "C") my_enemy_cmd = &p;
-        if (p.player == perspective && p.kind == "C") op_enemy_cmd = &p;
+        if (p.player == enemy && p.kind == PieceKind::Commander) my_enemy_cmd = &p;
+        if (p.player == perspective && p.kind == PieceKind::Commander) op_enemy_cmd = &p;
     }
 
     int my_caps = 0, my_progress = 0;
@@ -3381,8 +3444,8 @@ static EvalBackendKind active_eval_backend() {
     return g_eval_backend;
 }
 
-static bool is_win_condition_piece_kind(const std::string& kind) {
-    return kind == "N" || kind == "Af" || kind == "T" || kind == "In" || kind == "A";
+static bool is_win_condition_piece_kind(PieceKind kind) {
+    return kind == PieceKind::Navy || kind == PieceKind::AirForce || kind == PieceKind::Tank || kind == PieceKind::Infantry || kind == PieceKind::Artillery;
 }
 
 // === NEW: Advanced Threat Evaluation (~+80 Elo) ===
@@ -3392,17 +3455,17 @@ static bool is_win_condition_piece_kind(const std::string& kind) {
 //  • commander pressure and win-condition target pressure
 //  • potential discovered attacks from loaded carriers (unload threats)
 static int side_advanced_threat_score(const PieceList& pieces,
-                                      const std::string& side,
+                                      Player side,
                                       const AttackCache* cache,
                                       const MoveGenContext& ctx) {
-    const std::string enemy = opp(side);
-    const int side_pi = player_idx(side);
+    Player enemy = opp(side);
+    const int side_pi = (side == Player::Red) ? 0 : 1;
     const int enemy_pi = 1 - side_pi;
     int score = 0;
 
     const Piece* enemy_cmd = nullptr;
     for (const auto& p : pieces) {
-        if (p.player == enemy && p.kind == "C") { enemy_cmd = &p; break; }
+        if (p.player == enemy && p.kind == PieceKind::Commander) { enemy_cmd = &p; break; }
     }
 
     std::array<int, PieceList::kMaxPieces> payload_count{};
@@ -3421,7 +3484,7 @@ static int side_advanced_threat_score(const PieceList& pieces,
 
     // Undefended / overloaded enemy pieces (higher value for carriers + objective units).
     for (const auto& ep : pieces) {
-        if (ep.player != enemy || ep.kind == "H") continue;
+        if (ep.player != enemy || ep.kind == PieceKind::HQ) continue;
         int atk = cache ? cache->counts[side_pi][ep.row][ep.col]
                         : attackers_to_square(pieces, ep.col, ep.row, side, cache);
         if (atk == 0) continue;
@@ -3429,8 +3492,8 @@ static int side_advanced_threat_score(const PieceList& pieces,
                         : attackers_to_square(pieces, ep.col, ep.row, enemy, cache);
         int val = piece_value_fast(ep.kind);
         int weight = val / 9;
-        if (ep.kind == "C") weight += 260;
-        if (ep.kind == "N" || ep.kind == "Af") weight += 140;
+        if (ep.kind == PieceKind::Commander) weight += 260;
+        if (ep.kind == PieceKind::Navy || ep.kind == PieceKind::AirForce) weight += 140;
         if (is_win_condition_piece_kind(ep.kind)) weight += 80;
         if (ep.id >= 0 && ep.id < (int)payload_count.size() && payload_count[ep.id] > 0) {
             weight += 60 * payload_count[ep.id];
@@ -3442,7 +3505,7 @@ static int side_advanced_threat_score(const PieceList& pieces,
 
     // Cross-domain attack pressure + potential discovered attacks after unloading carriers.
     for (const auto& p : pieces) {
-        if (p.player != side || p.kind == "H") continue;
+        if (p.player != side || p.kind == PieceKind::HQ) continue;
 
         int payload = (p.id >= 0 && p.id < (int)payload_count.size()) ? payload_count[p.id] : 0;
         if (payload > 0 && enemy_cmd) {
@@ -3456,17 +3519,17 @@ static int side_advanced_threat_score(const PieceList& pieces,
             if (!tgt || tgt->player == side) continue;
 
             int bonus = 0;
-            if (p.kind == "Af") {
-                if (tgt->kind != "Af") bonus += 36;
-                if (is_sea(tgt->col, tgt->row) || tgt->kind == "N") bonus += 30;
-            } else if (p.kind == "N") {
-                if (is_sea(tgt->col, tgt->row) || tgt->kind == "N" || tgt->kind == "Af") bonus += 34;
-            } else if (p.kind == "A" || p.kind == "Ms") {
+            if (p.kind == PieceKind::AirForce) {
+                if (tgt->kind != PieceKind::AirForce) bonus += 36;
+                if (is_sea(tgt->col, tgt->row) || tgt->kind == PieceKind::Navy) bonus += 30;
+            } else if (p.kind == PieceKind::Navy) {
+                if (is_sea(tgt->col, tgt->row) || tgt->kind == PieceKind::Navy || tgt->kind == PieceKind::AirForce) bonus += 34;
+            } else if (p.kind == PieceKind::Artillery || p.kind == PieceKind::Missile) {
                 int dist = std::max(std::abs(p.col - tgt->col), std::abs(p.row - tgt->row));
                 if (dist >= 2) bonus += 30 + dist * 4;
             }
 
-            if (tgt->kind == "C") bonus += 160;
+            if (tgt->kind == PieceKind::Commander) bonus += 160;
             if (is_win_condition_piece_kind(tgt->kind)) bonus += 48;
             score += bonus;
         }
@@ -3481,7 +3544,7 @@ static int side_advanced_threat_score(const PieceList& pieces,
             int dist = std::abs(carrier->col - enemy_cmd->col) + std::abs(carrier->row - enemy_cmd->row);
             if (dist > 7) continue;
             int payload_threat = piece_value_fast(p.kind) / 10;
-            if (p.kind == "T" || p.kind == "A" || p.kind == "Ms" || p.kind == "Af" || p.kind == "C")
+            if (p.kind == PieceKind::Tank || p.kind == PieceKind::Artillery || p.kind == PieceKind::Missile || p.kind == PieceKind::AirForce || p.kind == PieceKind::Commander)
                 payload_threat += 45;
             score += std::max(0, payload_threat + 70 - dist * 10);
         }
@@ -3490,7 +3553,7 @@ static int side_advanced_threat_score(const PieceList& pieces,
     return score;
 }
 
-static int advanced_threat_eval(const PieceList& pieces, const std::string& perspective,
+static int advanced_threat_eval(const PieceList& pieces, Player perspective,
                                 const AttackCache* cache = nullptr) {
     MoveGenContext ctx = build_movegen_context(pieces);
     int my_threats = side_advanced_threat_score(pieces, perspective, cache, ctx);
@@ -3498,9 +3561,9 @@ static int advanced_threat_eval(const PieceList& pieces, const std::string& pers
     return my_threats - opp_threats;
 }
 
-static int board_score_cpu_impl(const PieceList& pieces, const std::string& perspective,
+static int board_score_cpu_impl(const PieceList& pieces, Player perspective,
                                 const AttackCache* cache = nullptr,
-                                const std::string* side_to_move = nullptr,
+                                const Player* side_to_move = nullptr,
                                 const SearchState* eval_state = nullptr) {
     // ── Game Phase ───────────────────────────────────────────────────────
     int phase = eval_state ? eval_state->phase : compute_game_phase(pieces);
@@ -3516,7 +3579,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
     int score = 0;
     if (use_precomputed_base) {
-        int pi = (perspective == "red") ? 0 : 1;
+        int pi = (perspective == Player::Red) ? 0 : 1;
         score += eval_state->blended_base_eval_for_side(pi);
     }
 
@@ -3534,22 +3597,22 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
     for (auto& p : pieces) {
         bool mine = (p.player == perspective);
-        if (p.kind=="C") { if (mine) my_cmd = &p; else opp_cmd = &p; continue; }
-        if (p.kind=="H") continue;
+        if (p.kind == PieceKind::Commander) { if (mine) my_cmd = &p; else opp_cmd = &p; continue; }
+        if (p.kind == PieceKind::HQ) continue;
         if (mine) my_piece_count++; else opp_piece_count++;
-        if (p.kind=="N")  { if (mine) my_navy++; else opp_navy++; }
-        if (p.kind=="Af") { if (mine) my_af++;   else opp_af++; }
-        if (p.kind=="Aa") { if (mine) my_aa++;   else opp_aa++; }
-        if (p.kind=="T")  { if (mine) my_tank++; else opp_tank++; }
-        if (p.kind=="Ms") { if (mine) my_ms++;   else opp_ms++; }
-        if (p.kind=="A" || p.kind=="T" || p.kind=="In") {
+        if (p.kind == PieceKind::Navy)  { if (mine) my_navy++; else opp_navy++; }
+        if (p.kind == PieceKind::AirForce) { if (mine) my_af++;   else opp_af++; }
+        if (p.kind == PieceKind::AntiAircraft) { if (mine) my_aa++;   else opp_aa++; }
+        if (p.kind == PieceKind::Tank)  { if (mine) my_tank++; else opp_tank++; }
+        if (p.kind == PieceKind::Missile) { if (mine) my_ms++;   else opp_ms++; }
+        if (p.kind == PieceKind::Artillery || p.kind == PieceKind::Tank || p.kind == PieceKind::Infantry) {
             if (mine) my_land++; else opp_land++;
         }
     }
 
     // ── Per-piece evaluation ─────────────────────────────────────────────
     for (auto& p : pieces) {
-        if (p.kind == "H") continue; // HQ has no eval contribution
+        if (p.kind == PieceKind::HQ) continue; // HQ has no eval contribution
         bool mine = (p.player == perspective);
         int sign = mine ? 1 : -1;
 
@@ -3566,11 +3629,11 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
         // Threat bonus: piece can capture enemy Commander
         int threat = 0;
-        if (p.kind != "H" && p.kind != "C" && !p.hero) {
+        if (p.kind != PieceKind::HQ && p.kind != PieceKind::Commander && !p.hero) {
             const Piece* oc = mine ? opp_cmd : my_cmd;
             if (oc && cache) {
                 // Use attack cache: check if this side attacks the enemy commander's square
-                int my_pl_idx = (p.player == "red") ? 0 : 1;
+                int my_pl_idx = (p.player == Player::Red) ? 0 : 1;
                 if (cache->counts[my_pl_idx][oc->row][oc->col] > 0) {
                     threat = THREAT_BONUS;
                 }
@@ -3596,8 +3659,8 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
         // Space advance bonus (bigger in endgame)
         int space = 0;
-        if (p.kind != "C" && p.kind != "H" && p.kind != "N") {
-            int advance = (p.player=="red") ? p.row : (11 - p.row);
+        if (p.kind != PieceKind::Commander && p.kind != PieceKind::HQ && p.kind != PieceKind::Navy) {
+            int advance = (p.player == Player::Red) ? p.row : (11 - p.row);
             space += advance * SPACE_ADV_WEIGHT;
             if (p.col >= 3 && p.col <= 7 && p.row >= 4 && p.row <= 7)
                 space += SPACE_CENTER_BONUS;
@@ -3605,8 +3668,8 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
         // Hanging piece penalty: attacked but not defended
         int hanging = 0;
-        if (cache && p.kind != "C") {
-            int opp_pl = (p.player=="red") ? 1 : 0;
+        if (cache && p.kind != PieceKind::Commander) {
+            int opp_pl = (p.player == Player::Red) ? 1 : 0;
             int own_pl = 1 - opp_pl;
             int atk = cache->counts[opp_pl][p.row][p.col];
             int def = cache->counts[own_pl][p.row][p.col];
@@ -3623,7 +3686,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         int special = 0;
 
         // Navy safety
-        if (p.kind == "N") {
+        if (p.kind == PieceKind::Navy) {
             int atk_n = attackers_to_square(pieces, p.col, p.row, opp(p.player), cache);
             int def_n = attackers_to_square(pieces, p.col, p.row, p.player, cache);
             special -= atk_n * 180;
@@ -3633,7 +3696,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         }
 
         // Air Force safety + Aa interaction
-        if (p.kind == "Af") {
+        if (p.kind == PieceKind::AirForce) {
             int atk_f = attackers_to_square(pieces, p.col, p.row, opp(p.player), cache);
             int def_f = attackers_to_square(pieces, p.col, p.row, p.player, cache);
             special -= atk_f * 180;
@@ -3642,9 +3705,9 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         }
 
         // Anti-air: bonus for covering friendly Af
-        if (p.kind == "Aa") {
+        if (p.kind == PieceKind::AntiAircraft) {
             for (auto& q : pieces) {
-                if (q.player != p.player || q.kind != "Af") continue;
+                if (q.player != p.player || q.kind != PieceKind::AirForce) continue;
                 int dist = std::abs(q.col - p.col) + std::abs(q.row - p.row);
                 if (dist <= 3) special += 15;
                 if (dist <= 1) special += 10;
@@ -3652,7 +3715,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         }
 
         // Missile: bonus for being in range of high-value enemy targets
-        if (p.kind == "Ms") {
+        if (p.kind == PieceKind::Missile) {
             const Piece* ec = mine ? opp_cmd : my_cmd;
             if (ec) {
                 int dist = std::abs(p.col - ec->col) + std::abs(p.row - ec->row);
@@ -3693,7 +3756,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
         int escapes = 0;
         auto cmd_moves = get_moves(*my_cmd, pieces);
         for (auto& m : cmd_moves) {
-            int opp_pl = (perspective == "red") ? 1 : 0;
+            int opp_pl = (perspective == Player::Red) ? 1 : 0;
             if (!cache || cache->counts[opp_pl][m.second][m.first] == 0) escapes++;
         }
         if (escapes <= 1) score -= 80;
@@ -3725,7 +3788,7 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
     // ── Approximate mobility from attack cache ──────────────────────────
     // Much faster than generating all legal moves (the old method).
     if (cache) {
-        int my_pl  = (perspective == "red") ? 0 : 1;
+        int my_pl  = (perspective == Player::Red) ? 0 : 1;
         int opp_pl = 1 - my_pl;
         int my_squares = cache->attacked_square_count[my_pl];
         int opp_squares = cache->attacked_square_count[opp_pl];
@@ -3745,9 +3808,9 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
     // ── Structural bonuses ───────────────────────────────────────────────
     for (auto& p : pieces) {
         int bonus = 0;
-        if      (p.kind == "Aa") bonus = 14;
-        else if (p.kind == "Ms") bonus = 18;
-        else if (p.kind == "N")  bonus = 10;
+        if      (p.kind == PieceKind::AntiAircraft) bonus = 14;
+        else if (p.kind == PieceKind::Missile) bonus = 18;
+        else if (p.kind == PieceKind::Navy)  bonus = 10;
         score += (p.player == perspective ? 1 : -1) * bonus;
     }
 
@@ -3800,9 +3863,9 @@ static int board_score_cpu_impl(const PieceList& pieces, const std::string& pers
 
 struct EvalBatchRequest {
     const PieceList* pieces;
-    const std::string* perspective;
+    const Player* perspective;
     const AttackCache* cache;
-    const std::string* side_to_move;
+    const Player* side_to_move;
 };
 
 static std::vector<int> board_score_batch_cpu_impl(const std::vector<EvalBatchRequest>& batch) {
@@ -3833,9 +3896,9 @@ static std::vector<int> board_score_batch(const std::vector<EvalBatchRequest>& b
     return board_score_batch_cpu_impl(batch);
 }
 
-static int board_score_webgpu_impl(const PieceList& pieces, const std::string& perspective,
+static int board_score_webgpu_impl(const PieceList& pieces, Player perspective,
                                    const AttackCache* cache = nullptr,
-                                   const std::string* side_to_move = nullptr,
+                                   const Player* side_to_move = nullptr,
                                    const SearchState* eval_state = nullptr) {
     (void)eval_state;
     EvalBatchRequest req{&pieces, &perspective, cache, side_to_move};
@@ -3843,9 +3906,9 @@ static int board_score_webgpu_impl(const PieceList& pieces, const std::string& p
     return out.empty() ? 0 : out[0];
 }
 
-static int board_score(const PieceList& pieces, const std::string& perspective,
+static int board_score(const PieceList& pieces, Player perspective,
                        const AttackCache* cache = nullptr,
-                       const std::string* side_to_move = nullptr,
+                       const Player* side_to_move = nullptr,
                        const SearchState* eval_state = nullptr) {
     if (active_eval_backend() == EvalBackendKind::WEBGPU)
         return board_score_webgpu_impl(pieces, perspective, cache, side_to_move, eval_state);
@@ -3858,7 +3921,7 @@ static const int Q_LIMIT   = 6;   // raised from 4 for deeper tactical vision
 static const int DELTA_MARGIN = 200; // delta pruning margin
 
 static int quiesce(SearchState& st, int alpha, int beta,
-                   const std::string& perspective, const std::string& cpu_player,
+                   Player perspective, Player cpu_player,
                    int q_depth=0) {
     g_nodes.fetch_add(1, std::memory_order_relaxed);
     int stand = (perspective == cpu_player) ? st.quick_eval : -st.quick_eval;
@@ -3882,11 +3945,11 @@ static int quiesce(SearchState& st, int alpha, int beta,
     {
         const Piece* my_cmd = nullptr;
         for (const auto& p : st.pieces) {
-            if (p.player == perspective && p.kind == "C") { my_cmd = &p; break; }
+            if (p.player == perspective && p.kind == PieceKind::Commander) { my_cmd = &p; break; }
         }
         if (my_cmd) {
             ensure_attack_cache(st);
-            int pl_atk = (perspective == "red") ? 1 : 0;
+            int pl_atk = (perspective == Player::Red) ? 1 : 0;
             in_check = (st.atk.counts[pl_atk][my_cmd->row][my_cmd->col] > 0);
         }
     }
@@ -3915,7 +3978,7 @@ static int quiesce(SearchState& st, int alpha, int beta,
                 const Piece* t = (ti >= 0) ? &st.pieces[(std::size_t)ti] : nullptr;
             bool is_cap = (t && t->player != perspective);
             // In check: also include quiet commander moves as evasions
-            bool is_evasion = (in_check && p.kind == "C" && !is_cap);
+            bool is_evasion = (in_check && p.kind == PieceKind::Commander && !is_cap);
             if (!is_cap && !is_evasion) continue;
                 int sv = is_cap ? see(st.pieces, c, r, perspective) : 0;
                 if (ncaps < 128) caps[ncaps++] = {p.id, c, r, sv, !is_cap};
@@ -4039,7 +4102,7 @@ static void seed_search_hash_path_from_history(const std::vector<uint64_t>& hist
 }
 
 static int alphabeta(SearchState& st, int depth, int alpha, int beta,
-                     const std::string& cpu_player, int ply,
+                     Player cpu_player, int ply,
                      bool null_ok=true, const MoveTriple* prev_move=nullptr,
                      ThreadData* td=nullptr) {
     SearchPathGuard path_guard(st.hash);
@@ -4059,7 +4122,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
     bool pv_node   = (beta - alpha > 1);
 
     // ── Terminal: win check ───────────────────────────────────────────────
-    std::string last_mover = opp(st.turn);
+    Player last_mover = opp(st.turn);
     std::string win = check_win(st.pieces, last_mover);
     if (!win.empty()) {
         int base = 40000 + depth*100;
@@ -4198,9 +4261,9 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
                 nu.turn_before = ns.turn;
                 nu.hash_before = ns.hash;
                 nu.quick_eval_before = ns.quick_eval;
-                ns.hash ^= g_ZobristTurn[ns.turn=="red" ? 0 : 1];
+                ns.hash ^= g_ZobristTurn[ns.turn == Player::Red ? 0 : 1];
                 ns.turn = opp(ns.turn);
-                ns.hash ^= g_ZobristTurn[ns.turn=="red" ? 0 : 1];
+                ns.hash ^= g_ZobristTurn[ns.turn == Player::Red ? 0 : 1];
                 ns.atk.valid = false;
 
                 int null_val;
@@ -4241,7 +4304,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
 
     int pre_cpu_cmd_atk = commander_attackers_cached(st, cpu_player);
     int pre_opp_cmd_atk = commander_attackers_cached(st, opp(cpu_player));
-    int pre_my_navy = st.navy_count[(cpu_player == "red") ? 0 : 1];
+    int pre_my_navy = st.navy_count[(cpu_player == Player::Red) ? 0 : 1];
     AllMoves moves = all_moves_for(st.pieces, st.turn);
     if (moves.empty()) {
         ensure_attack_cache(st);
@@ -4277,10 +4340,10 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         int target_idx = find_piece_idx_at_fast(st, m.dc, m.dr);
         const Piece* target = (target_idx >= 0) ? &st.pieces[(std::size_t)target_idx] : nullptr;
         bool is_capture = (target && target->player != st.turn);
-        const bool captures_navy = is_capture && target && target->kind=="N";
+        const bool captures_navy = is_capture && target && target->kind == PieceKind::Navy;
         bool is_critical_capture = is_capture &&
-            (target->kind=="C" || target->kind=="N" || target->kind=="Af" ||
-             target->kind=="A" || target->kind=="T" || target->kind=="In");
+            (target->kind == PieceKind::Commander || target->kind == PieceKind::Navy || target->kind == PieceKind::AirForce ||
+             target->kind == PieceKind::Artillery || target->kind == PieceKind::Tank || target->kind == PieceKind::Infantry);
         int full_depth = search_depth - 1 + ((is_critical_capture && search_depth <= 4) ? 1 : 0);
         if (full_depth < 0) full_depth = 0;
 
@@ -4394,7 +4457,7 @@ static int alphabeta(SearchState& st, int depth, int alpha, int beta,
         // Rule-aware selective extensions.
         int post_cpu_cmd_atk = commander_attackers_cached(st, cpu_player);
         int post_opp_cmd_atk = commander_attackers_cached(st, opp(cpu_player));
-        int post_my_navy = st.navy_count[(cpu_player == "red") ? 0 : 1];
+        int post_my_navy = st.navy_count[(cpu_player == Player::Red) ? 0 : 1];
         int rule_ext = 0;
         if (pre_cpu_cmd_atk > 0 && post_cpu_cmd_atk < pre_cpu_cmd_atk) rule_ext++;
         if (node_is_max && post_opp_cmd_atk > 0) rule_ext++;
@@ -4612,7 +4675,7 @@ static constexpr int   MCTS_EVAL_BATCH_WEBGPU = 128;
 // Returns a softmax probability vector over the given moves.
 static std::vector<float> mcts_policy_priors(const AllMoves& moves,
                                               const PieceList& pieces,
-                                              const std::string& player) {
+                                              Player player) {
     if (moves.empty()) return {};
     std::vector<float> raw(moves.size(), 0.0f);
     int hist_pl = player_idx(player);
@@ -4622,7 +4685,7 @@ static std::vector<float> mcts_policy_priors(const AllMoves& moves,
     const Piece* my_cmd  = nullptr;
     const Piece* opp_cmd = nullptr;
     for (const auto& p : pieces) {
-        if (p.kind != "C") continue;
+        if (p.kind != PieceKind::Commander) continue;
         if (p.player == player) my_cmd = &p;
         else                    opp_cmd = &p;
     }
@@ -4650,7 +4713,7 @@ static std::vector<float> mcts_policy_priors(const AllMoves& moves,
         int atk_idx = find_piece_idx_by_id(pieces, m.pid);
         if (atk_idx >= 0) {
             const Piece& ap = pieces[atk_idx];
-            float adv = (player == "blue") ? (float)(ap.row - m.dr)
+            float adv = (player == Player::Blue) ? (float)(ap.row - m.dr)
                                            : (float)(m.dr - ap.row);
             s += adv * 3.5f;
         }
@@ -4680,7 +4743,7 @@ static std::vector<float> mcts_policy_priors(const AllMoves& moves,
         // When our commander is threatened, prioritise moves that place a
         // piece as a bodyguard (nearby defender) or move commander to safety.
         if (my_cmd) {
-            bool my_cmd_piece = (atk_idx >= 0 && pieces[atk_idx].kind == "C");
+            bool my_cmd_piece = (atk_idx >= 0 && pieces[atk_idx].kind == PieceKind::Commander);
             int dist_to = std::abs(m.dc - my_cmd->col) + std::abs(m.dr - my_cmd->row);
             if (my_cmd_piece) {
                 // Commander moving: bonus for moving away from danger
@@ -4760,7 +4823,7 @@ struct MCTSLevel1Child {
 
 // ── Main MCTS+AB root search ──────────────────────────────────────────────
 static AIResult mcts_ab_root_search(const PieceList& pieces,
-                                     const std::string& cpu_player,
+                                     Player cpu_player,
                                      int ab_depth,
                                      double time_limit_secs,
                                      const std::atomic<bool>* stop_flag = nullptr) {
@@ -4803,7 +4866,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
 
     int root_visits = 1;
     EngineMutex tree_mutex;
-    const std::string opp_player = opp(cpu_player);
+    Player opp_player = opp(cpu_player);
 
     auto evaluate_leaf_value = [&](SelectionPath& sel, int* out_val) -> bool {
         if (!out_val) return false;
@@ -5027,7 +5090,7 @@ static AIResult mcts_ab_root_search(const PieceList& pieces,
     return {true, children[best_idx].move};
 }
 
-static bool is_legal_book_move(const SearchState& st, const std::string& cpu_player, const MoveTriple& cand) {
+static bool is_legal_book_move(const SearchState& st, Player cpu_player, const MoveTriple& cand) {
     int idx = find_piece_idx_by_id_fast(st, cand.pid);
     if (idx < 0) return false;
     const Piece& p = st.pieces[idx];
@@ -5038,7 +5101,7 @@ static bool is_legal_book_move(const SearchState& st, const std::string& cpu_pla
 
 static void append_book_move_from_square(std::vector<MoveTriple>& book,
                                          const SearchState& st,
-                                         const std::string& cpu_player,
+                                         Player cpu_player,
                                          int from_c, int from_r,
                                          int to_c, int to_r) {
     int idx = find_piece_idx_at(st.pieces, from_c, from_r);
@@ -5048,7 +5111,7 @@ static void append_book_move_from_square(std::vector<MoveTriple>& book,
     book.push_back({p.id, to_c, to_r});
 }
 
-static int opening_immediate_risk(const PieceList& pieces, const std::string& cpu_player) {
+static int opening_immediate_risk(const PieceList& pieces, Player cpu_player) {
     AllMoves om = all_moves_for(pieces, opp(cpu_player));
     bool commander_hanging = false;
     std::array<uint8_t, PieceList::kMaxPieces> af_hanging{};
@@ -5070,12 +5133,12 @@ static int opening_immediate_risk(const PieceList& pieces, const std::string& cp
         if (!t || t->player != cpu_player) continue;
         int ti = idx_by_id(t->id);
         if (ti < 0) continue;
-        if (t->kind == "C") commander_hanging = true;
-        else if (t->kind == "Af") {
+        if (t->kind == PieceKind::Commander) commander_hanging = true;
+        else if (t->kind == PieceKind::AirForce) {
             if (!af_hanging[(std::size_t)ti]) { af_hanging[(std::size_t)ti] = 1; af_count++; }
-        } else if (t->kind == "N") {
+        } else if (t->kind == PieceKind::Navy) {
             if (!navy_hanging[(std::size_t)ti]) { navy_hanging[(std::size_t)ti] = 1; navy_count++; }
-        } else if (t->kind == "A" || t->kind == "T" || t->kind == "In") {
+        } else if (t->kind == PieceKind::Artillery || t->kind == PieceKind::Tank || t->kind == PieceKind::Infantry) {
             if (!land_hanging[(std::size_t)ti]) { land_hanging[(std::size_t)ti] = 1; land_count++; }
         }
     }
@@ -5088,10 +5151,10 @@ static int opening_immediate_risk(const PieceList& pieces, const std::string& cp
     return risk;
 }
 
-static bool opening_book_pick(const SearchState& st, const std::string& cpu_player, MoveTriple& out) {
+static bool opening_book_pick(const SearchState& st, Player cpu_player, MoveTriple& out) {
     if (st.pieces.size() < 34) return false; // opening only
     const bool very_early_opening = (st.pieces.size() >= 36);
-    auto prow = [&](int blue_row) { return (cpu_player == "red") ? (ROWS - 1 - blue_row) : blue_row; };
+    auto prow = [&](int blue_row) { return (cpu_player == Player::Red) ? (ROWS - 1 - blue_row) : blue_row; };
 
     std::vector<MoveTriple> book;
 
@@ -5100,8 +5163,8 @@ static bool opening_book_pick(const SearchState& st, const std::string& cpu_play
     const int r_front = prow(8);
     const Piece* navy_back = piece_at_c(st.pieces, 0, r_back);
     const Piece* navy_front = piece_at_c(st.pieces, 0, r_front);
-    bool have_back_navy = navy_back && navy_back->player == cpu_player && navy_back->kind == "N";
-    bool have_front_navy = navy_front && navy_front->player == cpu_player && navy_front->kind == "N";
+    bool have_back_navy = navy_back && navy_back->player == cpu_player && navy_back->kind == PieceKind::Navy;
+    bool have_front_navy = navy_front && navy_front->player == cpu_player && navy_front->kind == PieceKind::Navy;
     if (have_back_navy && have_front_navy) {
         append_book_move_from_square(book, st, cpu_player, 0, r_front, 1, r_front);
         append_book_move_from_square(book, st, cpu_player, 0, r_back, 1, r_back);
@@ -5124,7 +5187,7 @@ static bool opening_book_pick(const SearchState& st, const std::string& cpu_play
     bool found = false;
     int best_score = -99999999;
     MoveTriple best{};
-    const std::string stm_after = opp(cpu_player);
+    Player stm_after = opp(cpu_player);
     for (auto& m : book) {
         if (!is_legal_book_move(st, cpu_player, m)) continue;
         PieceList np = apply_move(st.pieces, m.pid, m.dc, m.dr, cpu_player);
@@ -5142,7 +5205,7 @@ static bool opening_book_pick(const SearchState& st, const std::string& cpu_play
     return false;
 }
 
-static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_player,
+static AIResult cpu_pick_move(const PieceList& pieces, Player cpu_player,
                                int max_depth, double time_limit_secs,
                                const std::atomic<bool>* stop_flag = nullptr,
                                ThreadData* td = nullptr) {
@@ -5231,7 +5294,7 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
             for (auto& m : root_moves) {
                 if (time_up()) break;
                 int moved_idx = find_piece_idx_by_id(root.pieces, m.pid);
-                std::string moved_kind = (moved_idx >= 0) ? root.pieces[moved_idx].kind : "";
+                PieceKind moved_kind = (moved_idx >= 0) ? root.pieces[moved_idx].kind : PieceKind::None;
                 const Piece* root_target = piece_at_c(root.pieces, m.dc, m.dr);
                 bool root_is_capture = (root_target && root_target->player != cpu_player);
 
@@ -5271,9 +5334,9 @@ static AIResult cpu_pick_move(const PieceList& pieces, const std::string& cpu_pl
                     if (opp_immediate_win) style_penalty += 250000;
                     if (very_early_opening && root_risk > base_opening_risk + 4500)
                         style_penalty += 900;  // avoid lines that newly hang key units
-                    if (moved_kind == "Af" && !root_is_capture)
+                    if (moved_kind == PieceKind::AirForce && !root_is_capture)
                         style_penalty += very_early_opening ? 280 : 120;
-                    if (moved_kind == "Af" && root_risk > base_opening_risk)
+                    if (moved_kind == PieceKind::AirForce && root_risk > base_opening_risk)
                         style_penalty += 180;
                 }
                 int ranked = val - style_penalty;
@@ -5353,7 +5416,7 @@ struct SMPShared {
 };
 
 static void smp_worker(int thread_id, const PieceList& pieces,
-                        const std::string& cpu_player,
+                        Player cpu_player,
                         int max_depth, SMPShared& shared) {
     init_lmr_table();
     reset_time_state();
@@ -5437,7 +5500,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                 if (std::chrono::steady_clock::now() > shared.deadline) break;
 
                 int moved_idx = find_piece_idx_by_id(root.pieces, m.pid);
-                std::string moved_kind = (moved_idx >= 0) ? root.pieces[moved_idx].kind : "";
+                PieceKind moved_kind = (moved_idx >= 0) ? root.pieces[moved_idx].kind : PieceKind::None;
                 const Piece* root_target = piece_at_c(root.pieces, m.dc, m.dr);
                 bool root_is_capture = (root_target && root_target->player != cpu_player);
 
@@ -5475,9 +5538,9 @@ static void smp_worker(int thread_id, const PieceList& pieces,
                     if (opp_immediate_win) style_penalty += 250000;
                     if (very_early_opening && root_risk > base_opening_risk + 4500)
                         style_penalty += 900;
-                    if (moved_kind == "Af" && !root_is_capture)
+                    if (moved_kind == PieceKind::AirForce && !root_is_capture)
                         style_penalty += very_early_opening ? 280 : 120;
-                    if (moved_kind == "Af" && root_risk > base_opening_risk)
+                    if (moved_kind == PieceKind::AirForce && root_risk > base_opening_risk)
                         style_penalty += 180;
                 }
                 int ranked = val - style_penalty;
@@ -5563,7 +5626,7 @@ static void smp_worker(int thread_id, const PieceList& pieces,
     }
 }
 
-static AIResult smp_cpu_pick_move(const PieceList& pieces, const std::string& cpu_player,
+static AIResult smp_cpu_pick_move(const PieceList& pieces, Player cpu_player,
                                    int max_depth, double time_limit_secs,
                                    const std::atomic<bool>* external_stop = nullptr) {
     // Opening book check (single-threaded)
@@ -5692,12 +5755,12 @@ struct MoveRecord {
     int to_c = 0;
     int to_r = 0;
     bool capture = false;
-    std::string player = "red";
+    Player player = Player::Red;
 };
 
 struct Game {
     PieceList pieces;
-    std::string current;
+    Player current;
     int selected_id = -1;
     std::vector<Move2> valid_moves;
     GameState state = GameState::HUMAN_TURN;
@@ -5705,7 +5768,7 @@ struct Game {
     std::vector<std::string> move_log;
     std::vector<MoveRecord> move_records;
     std::vector<PieceList> state_history;      // board snapshot at ply index (0 = initial)
-    std::vector<std::string> turn_history;     // side-to-move for each snapshot
+    std::vector<Player> turn_history;     // side-to-move for each snapshot
     std::vector<uint64_t> position_history;
     int cpu_depth = 6;
     double cpu_time_limit = 3.0;
@@ -5713,9 +5776,9 @@ struct Game {
     int difficulty = 1; // 0=Easy, 1=Medium, 2=Hard
     GameMode selected_mode = GameMode::FULL_BATTLE;
     bool show_mode_menu = true;
-    std::string human_player = "red";
-    std::string cpu_player = "blue";
-    std::string menu_side_choice = "red";
+    Player human_player = Player::Red;
+    Player cpu_player = Player::Blue;
+    Player menu_side_choice = Player::Red;
     bool menu_side_chosen = false;
     bool has_last_move = false;
     int last_from_c = 0;
@@ -5723,7 +5786,7 @@ struct Game {
     int last_to_c = 0;
     int last_to_r = 0;
     bool last_move_capture = false;
-    std::string last_move_player = "red";
+    Player last_move_player = Player::Red;
     int review_index = -1; // -1 = live board, else index into state_history
 
     // === CHANGED ===
@@ -5738,7 +5801,7 @@ struct Game {
 
     Game() {
         pieces = make_initial_pieces();
-        current = "red";
+        current = Player::Red;
         state_history.clear();
         turn_history.clear();
         state_history.push_back(pieces);
@@ -5789,7 +5852,7 @@ struct Game {
         if (show_mode_menu) {
             if (menu_side_chosen) {
                 status_msg = std::string("Mode selected: ") + game_mode_name(selected_mode) +
-                             " | YOU = " + (menu_side_choice == "red" ? "RED" : "BLUE") +
+                             " | YOU = " + (menu_side_choice == Player::Red ? "RED" : "BLUE") +
                              " (click START GAME)";
             } else {
                 status_msg = std::string("Mode selected: ") + game_mode_name(selected_mode) +
@@ -5800,13 +5863,13 @@ struct Game {
         }
     }
 
-    void set_player_side(const std::string& side) {
-        if (side != "red" && side != "blue") return;
+    void set_player_side(Player side) {
+        if (side != Player::Red && side != Player::Blue) return;
         menu_side_choice = side;
         menu_side_chosen = true;
         if (show_mode_menu) {
             status_msg = std::string("Side selected: YOU = ") +
-                         (side == "red" ? "RED" : "BLUE") +
+                         (side == Player::Red ? "RED" : "BLUE") +
                          " (click START GAME)";
         }
     }
@@ -5840,11 +5903,11 @@ struct Game {
         if (msg) { status_msg = msg; return; }
         if (current == human_player) {
             status_msg = std::string("Your turn (") +
-                         (human_player == "red" ? "RED" : "BLUE") +
+                         (human_player == Player::Red ? "RED" : "BLUE") +
                          ") — select a piece to move";
         } else {
             status_msg = std::string("CPU thinking (") +
-                         (cpu_player == "red" ? "RED" : "BLUE") +
+                         (cpu_player == Player::Red ? "RED" : "BLUE") +
                          ")...";
         }
     }
@@ -5878,7 +5941,7 @@ struct Game {
         const MoveRecord& mr = move_records[mv];
         status_msg = "Reviewing move " + std::to_string(mv + 1) + "/" +
                      std::to_string(move_records.size()) +
-                     " (" + (mr.player == "red" ? "RED" : "BLUE") +
+                     " (" + (mr.player == Player::Red ? "RED" : "BLUE") +
                      ") — use < > arrows or click board for LIVE";
     }
 
@@ -5932,7 +5995,7 @@ struct Game {
         stop_cpu();
         g_game_mode = selected_mode;
         pieces = make_initial_pieces();
-        current = "red"; // Red always starts; CPU may move first if user picked Blue.
+        current = Player::Red; // Red always starts; CPU may move first if user picked Blue.
         selected_id = -1;
         valid_moves.clear();
         state = GameState::HUMAN_TURN;
@@ -6015,7 +6078,7 @@ struct Game {
         Piece before_piece = *piece;
         Piece* target = piece_at(pieces, dc, dr);
 
-        std::string log = (is_cpu?"CPU ":"YOU ") + piece->kind +
+        std::string log = (is_cpu?"CPU ":"YOU ") + kind_to_string(piece->kind) +
                           "(" + std::to_string(piece->col) + "," + std::to_string(piece->row) + ")" +
                           "->(" + std::to_string(dc) + "," + std::to_string(dr) + ")";
 
@@ -6026,7 +6089,7 @@ struct Game {
             else enemy_before++;
         }
 
-        if (target && target->player != current) log += " x" + target->kind;
+        if (target && target->player != current) log += " x" + kind_to_string(target->kind);
         pieces = apply_move(pieces, selected_id, dc, dr, current);
 
         int enemy_after = 0;
@@ -6053,7 +6116,7 @@ struct Game {
         last_move_player = current;
 
         Piece* after_piece = get_piece(selected_id);
-        if (before_piece.kind == "Af" && is_capture && self_lost_piece && !after_piece) {
+        if (before_piece.kind == PieceKind::AirForce && is_capture && self_lost_piece && !after_piece) {
             log += " (kamikaze)";
             play_sound("boom");
         } else {
@@ -6064,7 +6127,7 @@ struct Game {
             log += " *HERO";
             play_sound("hero");
         }
-        if (after_piece && before_piece.kind == "Af" &&
+        if (after_piece && before_piece.kind == PieceKind::AirForce &&
             before_piece.col == after_piece->col && before_piece.row == after_piece->row &&
             is_capture && (dc != before_piece.col || dr != before_piece.row)) {
             log += " @RETURN";
@@ -6120,7 +6183,7 @@ struct Game {
             cpu_done = false;
         }
         PieceList pieces_copy = pieces;
-        std::string cpu_pl = cpu_player;
+        Player cpu_pl = cpu_player;
         int depth = cpu_depth;
         double tlimit = cpu_time_limit;
 
@@ -6426,7 +6489,7 @@ static void draw_status(SDL_Renderer* r, const Game& g) {
 
     Color bg;
     if      (g.state == GameState::GAME_OVER) bg = {0x1a,0x1c,0x0e,0xff};
-    else if (g.current == "red")              bg = {0x1a,0x12,0x14,0xff};
+    else if (g.current == Player::Red)              bg = {0x1a,0x12,0x14,0xff};
     else                                      bg = {0x12,0x14,0x1a,0xff};
     set_draw_color(r, bg);
     fill_rect(r, 0, sy, WIN_W, STATUS_H);
@@ -6436,7 +6499,7 @@ static void draw_status(SDL_Renderer* r, const Game& g) {
 
     Color dc;
     if      (g.state == GameState::GAME_OVER) dc = C_AMBER;
-    else if (g.current == "red")              dc = C_RED_DOT;
+    else if (g.current == Player::Red)              dc = C_RED_DOT;
     else                                      dc = C_BLUE_DOT;
     // Glow behind dot
     SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
@@ -6448,7 +6511,7 @@ static void draw_status(SDL_Renderer* r, const Game& g) {
 
     SDL_Color tc;
     if      (g.state == GameState::GAME_OVER) tc = {0xfb,0xbf,0x24,0xff};
-    else if (g.current == "red")              tc = {0xf0,0x90,0x90,0xff};
+    else if (g.current == Player::Red)              tc = {0xf0,0x90,0x90,0xff};
     else                                      tc = {0x90,0x90,0xf0,0xff};
 
     std::string msg = (g.state == GameState::GAME_OVER)
@@ -6539,7 +6602,7 @@ static void draw_board(SDL_Renderer* r) {
 static void draw_last_move_trail(SDL_Renderer* r, const Game& g) {
     int from_c = 0, from_r = 0, to_c = 0, to_r = 0;
     bool is_capture = false;
-    std::string player = "red";
+    Player player = Player::Red;
     bool have = false;
     if (g.is_reviewing()) {
         int mv = g.review_index - 1;
@@ -6568,7 +6631,7 @@ static void draw_last_move_trail(SDL_Renderer* r, const Game& g) {
     int y0 = cy(from_r);
     int x1 = cx(to_c);
     int y1 = cy(to_r);
-    Color main = (player == "red")
+    Color main = (player == Player::Red)
         ? Color{0xff,0x7a,0x7a,0xd8}
         : Color{0x7a,0xa0,0xff,0xd8};
     Color glow = is_capture
@@ -6666,7 +6729,7 @@ static void draw_pieces(SDL_Renderer* r, const Game& g) {
     for (const auto& p : board) {
         if (p.carrier_id >= 0) continue;
         int x=cx(p.col), y=cy(p.row);
-        std::string key = p.kind + "_" + p.player;
+        std::string key = kind_to_string(p.kind) + "_" + player_to_string(p.player);
         if (p.hero) {
             set_draw_color(r, C_HERO_RING);
             draw_dashed_circle(r, x, y, PIECE_R+4, 5);
@@ -6677,12 +6740,12 @@ static void draw_pieces(SDL_Renderer* r, const Game& g) {
             SDL_Rect dst = {x-25, y-25, 50, 50};
             SDL_RenderCopy(r, it->second, nullptr, &dst);
         } else {
-            Color pc = p.player=="red"
+            Color pc = p.player == Player::Red
                 ? Color{0xcc,0x33,0x33,0xff}
                 : Color{0x22,0x44,0xcc,0xff};
             set_draw_color(r, pc); fill_circle(r, x, y, PIECE_R);
             set_draw_color(r, {0xff,0xff,0xff,0xff}); draw_circle(r, x, y, PIECE_R);
-            dtc(r, g_fnt_sm, p.kind.c_str(), x, y, {0xff,0xff,0xff,0xff});
+            dtc(r, g_fnt_sm, kind_to_string(p.kind).c_str(), x, y, {0xff,0xff,0xff,0xff});
         }
         if (p.hero)
             dtc(r, g_fnt_sm, "*", x+PIECE_R, y-PIECE_R+2, {0xff,0xee,0x00,0xff});
@@ -6831,17 +6894,17 @@ static void draw_panel(SDL_Renderer* r, const Game& g) {
     int y = TITLE_H + 8;
 
     // ── YOU / CPU info ─────────────────────────────────────────────────
-    Color you_dot = (g.human_player == "red") ? C_RED_DOT : C_BLUE_DOT;
-    SDL_Color you_tc = (g.human_player == "red")
+    Color you_dot = (g.human_player == Player::Red) ? C_RED_DOT : C_BLUE_DOT;
+    SDL_Color you_tc = (g.human_player == Player::Red)
         ? SDL_Color{0xf0,0x90,0x90,0xff}
         : SDL_Color{0x90,0xb0,0xf0,0xff};
-    const char* you_lbl = (g.human_player == "red") ? "YOU = RED" : "YOU = BLUE";
+    const char* you_lbl = (g.human_player == Player::Red) ? "YOU = RED" : "YOU = BLUE";
 
-    Color cpu_dot = (g.cpu_player == "red") ? C_RED_DOT : C_BLUE_DOT;
-    SDL_Color cpu_tc = (g.cpu_player == "red")
+    Color cpu_dot = (g.cpu_player == Player::Red) ? C_RED_DOT : C_BLUE_DOT;
+    SDL_Color cpu_tc = (g.cpu_player == Player::Red)
         ? SDL_Color{0xf0,0x90,0x90,0xff}
         : SDL_Color{0x90,0xb0,0xf0,0xff};
-    const char* cpu_lbl = (g.cpu_player == "red") ? "CPU = RED" : "CPU = BLUE";
+    const char* cpu_lbl = (g.cpu_player == Player::Red) ? "CPU = RED" : "CPU = BLUE";
 
     set_draw_color(r, you_dot);
     fill_circle(r, px+12, y, 5);
@@ -6906,7 +6969,7 @@ static void draw_panel(SDL_Renderer* r, const Game& g) {
     dtl(r, g_fnt_sm, tip3.c_str(), px+8, y, body_txt); y += 14;
     if (g.has_last_move) {
         std::string lm = std::string("Last: ") +
-            (g.last_move_player == "red" ? "R " : "B ") +
+            (g.last_move_player == Player::Red ? "R " : "B ") +
             "(" + std::to_string(g.last_from_c) + "," + std::to_string(g.last_from_r) + ")" +
             "->(" + std::to_string(g.last_to_c) + "," + std::to_string(g.last_to_r) + ")" +
             (g.last_move_capture ? " x" : "");
@@ -7060,8 +7123,8 @@ static void draw_game_over(SDL_Renderer* r, const Game& g) {
     for (int i=0; i<2; i++) draw_rect(r, ox+i, oy+i, ow-2*i, oh-2*i);
 
     // Check if player won
-    bool player_won = (g.win_msg.find("RED") != std::string::npos && g.human_player == "red") ||
-                      (g.win_msg.find("BLUE") != std::string::npos && g.human_player == "blue");
+    bool player_won = (g.win_msg.find("RED") != std::string::npos && g.human_player == Player::Red) ||
+                      (g.win_msg.find("BLUE") != std::string::npos && g.human_player == Player::Blue);
 
     const char* title = player_won ? "VICTORY!" : "GAME OVER";
     SDL_Color title_c = player_won
@@ -7170,7 +7233,7 @@ static void draw_mode_selection_screen(SDL_Renderer* r, const Game& g) {
     bool side_done = g.menu_side_chosen;
     draw_step_chip(0, "STEP 1  MODE", game_mode_name(g.selected_mode), true, false);
     draw_step_chip(1, "STEP 2  SIDE",
-                   side_done ? (g.menu_side_choice == "red" ? "You are RED" : "You are BLUE")
+                   side_done ? (g.menu_side_choice == Player::Red ? "You are RED" : "You are BLUE")
                              : "Choose RED or BLUE",
                    side_done, !side_done);
     draw_step_chip(2, "STEP 3  START",
@@ -7213,16 +7276,16 @@ static void draw_mode_selection_screen(SDL_Renderer* r, const Game& g) {
     SDL_Rect sr = mode_menu_side_rect(0);
     SDL_Rect sb = mode_menu_side_rect(1);
 
-    auto draw_side_btn = [&](const SDL_Rect& rc, const char* label, const std::string& side) {
+    auto draw_side_btn = [&](const SDL_Rect& rc, const char* label, Player side) {
         bool sel = g.menu_side_chosen && g.menu_side_choice == side;
         set_draw_color(r, sel ? Color{0x14,0x22,0x1a,0xff} : Color{0x14,0x18,0x20,0xff});
         fill_rect(r, rc.x, rc.y, rc.w, rc.h);
         Color edge = sel ? C_GREEN
-                         : (side == "red" ? Color{0xdc,0x35,0x45,0x55} : Color{0x3b,0x82,0xf6,0x55});
+                         : (side == Player::Red ? Color{0xdc,0x35,0x45,0x55} : Color{0x3b,0x82,0xf6,0x55});
         set_draw_color(r, edge);
         draw_rect(r, rc.x, rc.y, rc.w, rc.h);
 
-        set_draw_color(r, side == "red" ? C_RED_DOT : C_BLUE_DOT);
+        set_draw_color(r, side == Player::Red ? C_RED_DOT : C_BLUE_DOT);
         fill_circle(r, rc.x + 14, rc.y + rc.h/2, 6);
         dtc(r, g_fnt_btn, label, rc.x + rc.w/2 + 8, rc.y + rc.h/2,
             sel ? SDL_Color{0x58,0xc8,0x8c,0xff} : SDL_Color{0xb0,0xbe,0xc5,0xff});
@@ -7231,12 +7294,12 @@ static void draw_mode_selection_screen(SDL_Renderer* r, const Game& g) {
     std::string chosen_mode = std::string("Selected mode: ") + game_mode_name(g.selected_mode);
     dtc(r, g_fnt_md, chosen_mode.c_str(), WIN_W / 2, sr.y - 34, {0x58,0xc8,0x8c,0xbb});
     std::string chosen_side = g.menu_side_chosen
-        ? std::string("Selected side: YOU = ") + (g.menu_side_choice == "red" ? "RED" : "BLUE")
+        ? std::string("Selected side: YOU = ") + (g.menu_side_choice == Player::Red ? "RED" : "BLUE")
         : "Selected side: (choose RED or BLUE)";
     dtc(r, g_fnt_sm, chosen_side.c_str(), WIN_W / 2, sr.y - 14, {0x90,0xa4,0xae,0xff});
 
-    draw_side_btn(sr, "PLAY AS RED", "red");
-    draw_side_btn(sb, "PLAY AS BLUE", "blue");
+    draw_side_btn(sr, "PLAY AS RED", Player::Red);
+    draw_side_btn(sb, "PLAY AS BLUE", Player::Blue);
 
     draw_button(r, s.x, s.y, s.w, s.h, "START GAME",
                 g.menu_side_chosen ? SDL_Color{0x58,0xc8,0x8c,0xff}
@@ -7323,12 +7386,12 @@ static int run_headless_sim(const SimOptions& opt) {
 
     for (int g = 0; g < opt.games; g++) {
         PieceList pieces = make_initial_pieces();
-        std::string turn = "red";
-        if (opt.start == "blue") turn = "blue";
-        else if (opt.start == "alternate") turn = (g % 2 == 0) ? "red" : "blue";
-        else if (opt.start == "random") turn = (std::uniform_int_distribution<int>(0, 1)(rng) == 0) ? "red" : "blue";
-        const std::string starter = turn;
-        if (starter == "red") started_red++;
+        Player turn = Player::Red;
+        if (opt.start == "blue") turn = Player::Blue;
+        else if (opt.start == "alternate") turn = (g % 2 == 0) ? Player::Red : Player::Blue;
+        else if (opt.start == "random") turn = (std::uniform_int_distribution<int>(0, 1)(rng) == 0) ? Player::Red : Player::Blue;
+        Player starter = turn;
+        if (starter == Player::Red) started_red++;
         else started_blue++;
         std::vector<uint64_t> rep_history;
         push_position_history(rep_history, zobrist_hash(pieces, turn));
@@ -7339,7 +7402,7 @@ static int run_headless_sim(const SimOptions& opt) {
                 << "[sim] invalid initial state"
                 << " seed=" << opt.seed
                 << " game=" << g
-                << " starter=" << starter
+                << " starter=" << player_to_string(starter)
                 << " reason=\"" << init_why << "\"\n";
             std::abort();
         }
@@ -7368,7 +7431,7 @@ static int run_headless_sim(const SimOptions& opt) {
                     << " seed=" << opt.seed
                     << " game=" << g
                     << " ply=" << ply
-                    << " turn=" << turn
+                    << " turn=" << player_to_string(turn)
                     << " move=(" << r.move.pid << " -> " << r.move.dc << "," << r.move.dr << ")"
                     << " reason=\"" << why << "\"\n";
                 std::abort();
@@ -7376,7 +7439,7 @@ static int run_headless_sim(const SimOptions& opt) {
 
             std::string win = check_win(pieces, turn);
             if (!win.empty()) {
-                if (turn == "red") red_wins++;
+                if (turn == Player::Red) red_wins++;
                 else               blue_wins++;
                 if (turn == starter) starter_wins++;
                 else                 nonstarter_wins++;
@@ -7602,14 +7665,14 @@ int main(int argc, char* argv[]) {
                     if (!hit) {
                         SDL_Rect sr = mode_menu_side_rect(0);
                         if (inside(sr)) {
-                            game.set_player_side("red");
+                            game.set_player_side(Player::Red);
                             hit = true;
                         }
                     }
                     if (!hit) {
                         SDL_Rect sb = mode_menu_side_rect(1);
                         if (inside(sb)) {
-                            game.set_player_side("blue");
+                            game.set_player_side(Player::Blue);
                             hit = true;
                         }
                     }
