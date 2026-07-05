@@ -33,6 +33,7 @@ emcc \
   -sFILESYSTEM=0 \
   -sENVIRONMENT=web,worker \
   -sASSERTIONS=0 \
+  -msimd128 \
   -sUSE_SDL=2 \
   -sUSE_SDL_IMAGE=2 \
   -sUSE_SDL_TTF=2

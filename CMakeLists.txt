@@ -20,6 +20,20 @@ pkg_check_modules(SDL2_TTF   REQUIRED SDL2_ttf)
 
 add_executable(commander_chess commander_chess.cpp)
 
+# Native compiler optimization flags
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+    target_compile_options(commander_chess PRIVATE -O3 -flto -ffast-math)
+    if (NOT APPLE)
+        target_compile_options(commander_chess PRIVATE -march=native)
+    else()
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
+            target_compile_options(commander_chess PRIVATE -mcpu=apple-m1)
+        else()
+            target_compile_options(commander_chess PRIVATE -march=native)
+        endif()
+    endif()
+endif()
+
 target_include_directories(commander_chess PRIVATE
         ${SDL2_INCLUDE_DIRS}
         ${SDL2_IMAGE_INCLUDE_DIRS}

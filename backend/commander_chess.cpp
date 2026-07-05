@@ -872,26 +872,9 @@ struct BB132 {
 };
 
 static int bb_popcount(const BB132& b) {
-#if defined(__AVX2__)
-    alignas(32) uint64_t lanes[4] = {b.w[0], b.w[1], b.w[2], 0};
-    __m256i v = _mm256_load_si256((const __m256i*)lanes);
-    const __m256i lut = _mm256_setr_epi8(
-        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,
-        0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4);
-    const __m256i low_mask = _mm256_set1_epi8(0x0f);
-    __m256i lo = _mm256_and_si256(v, low_mask);
-    __m256i hi = _mm256_and_si256(_mm256_srli_epi16(v, 4), low_mask);
-    __m256i pc = _mm256_add_epi8(_mm256_shuffle_epi8(lut, lo),
-                                 _mm256_shuffle_epi8(lut, hi));
-    __m256i sum64 = _mm256_sad_epu8(pc, _mm256_setzero_si256());
-    alignas(32) uint64_t sums[4];
-    _mm256_store_si256((__m256i*)sums, sum64);
-    return (int)(sums[0] + sums[1] + sums[2] + sums[3]);
-#else
     return (int)(__builtin_popcountll(b.w[0]) +
                  __builtin_popcountll(b.w[1]) +
                  __builtin_popcountll(b.w[2]));
-#endif
 }
 
 static int bb_pop_lsb(BB132& b) {
