@@ -1701,12 +1701,36 @@ function ensureMoveDelightLayer() {
   return layer;
 }
 
+let boardRectCache = null;
+const cellRectCache = new Map();
+
+window.addEventListener('resize', () => {
+  boardRectCache = null;
+  cellRectCache.clear();
+});
+
+function getBoardFrameRect() {
+  if (!boardRectCache && boardFrameEl) {
+    boardRectCache = boardFrameEl.getBoundingClientRect();
+  }
+  return boardRectCache;
+}
+
 function boardCellCenter(c, r) {
   if (!boardEl || !boardFrameEl) return null;
-  const cell = boardEl.querySelector(`.cell[data-col="${c}"][data-row="${r}"]`);
-  if (!cell) return null;
-  const cellRect = cell.getBoundingClientRect();
-  const frameRect = boardFrameEl.getBoundingClientRect();
+  const keyName = `${c},${r}`;
+  let cellRect = cellRectCache.get(keyName);
+  
+  if (!cellRect) {
+    const cell = boardEl.querySelector(`.cell[data-col="${c}"][data-row="${r}"]`);
+    if (!cell) return null;
+    cellRect = cell.getBoundingClientRect();
+    cellRectCache.set(keyName, cellRect);
+  }
+  
+  const frameRect = getBoardFrameRect();
+  if (!frameRect) return null;
+  
   return {
     x: (cellRect.left - frameRect.left) + cellRect.width * 0.5,
     y: (cellRect.top - frameRect.top) + cellRect.height * 0.5,
@@ -3215,6 +3239,15 @@ function drawBoardNow() {
   const selectedPiece = reviewing ? null : pieceById(selectedPid, drawState);
   const legalMoves = selectedPiece ? legalMovesForPid(selectedPid, drawState) : [];
   const legalSet = new Map(legalMoves.map(m => [key(m.dc, m.dr), m]));
+
+  const pieceMap = new Map();
+  if (drawState && drawState.pieces) {
+    for (let i = 0; i < drawState.pieces.length; i++) {
+      const p = drawState.pieces[i];
+      if (p.carrier_id < 0) pieceMap.set(key(p.col, p.row), p);
+    }
+  }
+
   const markerFrom = reviewing
     ? (reviewIndex > historyOffset ? moveHistory[reviewIndex - historyOffset - 1]?.from || null : null)
     : lastMoveFrom;
@@ -3232,6 +3265,7 @@ function drawBoardNow() {
     boardEl.innerHTML = '';
     persistentCells = [];
     lastFlippedState = boardFlipped;
+    cellRectCache.clear();
     const frag = document.createDocumentFragment();
 
     for (let viewRow = 0; viewRow < ROWS; viewRow++) {
@@ -3269,7 +3303,7 @@ function drawBoardNow() {
     const baseClass = `cell ${terrainClass(c, r)}${isReef(c, r) ? ' reef' : ''}`;
     let className = baseClass;
 
-    const piece = pieceAt(c, r, drawState);
+    const piece = pieceMap.get(key(c, r)) || null;
     const legal = legalSet.has(key(c, r));
     const showLegal = hintsEnabled && legal;
     let legalCapture = false;
@@ -3279,7 +3313,7 @@ function drawBoardNow() {
     }
 
     if (legal) {
-      const target = pieceAt(c, r, drawState);
+      const target = pieceMap.get(key(c, r)) || null;
       if (target && selectedPiece && target.player !== selectedPiece.player) {
         legalCapture = true;
         if (showLegal) className += ' legal-capture';
@@ -3323,17 +3357,21 @@ function drawBoardNow() {
     const currentToken = cell.firstElementChild;
     if (piece) {
       const pieceKey = `${piece.id}-${piece.kind}-${piece.player}-${piece.promote_level}-${uiPrefs.pieceTheme}`;
-      // Re-create the token only if piece changed, selection state toggled, or land fx state changed
-      if (!currentToken || 
-          currentToken.dataset.pieceKey !== pieceKey || 
-          currentToken.classList.contains('piece-active') !== (piece.id === selectedPid) || 
-          currentToken.classList.contains('piece-landed') !== isFxTo) {
+      
+      if (!currentToken || currentToken.dataset.pieceKey !== pieceKey) {
         cell.innerHTML = '';
         const token = renderPieceToken(piece);
         token.dataset.pieceKey = pieceKey;
         if (isFxTo) token.classList.add('piece-landed');
         if (piece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
+      } else {
+        if (isFxTo !== currentToken.classList.contains('piece-landed')) {
+          currentToken.classList.toggle('piece-landed', isFxTo);
+        }
+        if ((piece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
+          currentToken.classList.toggle('piece-active', piece.id === selectedPid);
+        }
       }
     } else {
       if (currentToken) {
