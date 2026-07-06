@@ -1899,8 +1899,8 @@ function rememberBoardFx(nextState, fromSquare) {
     return;
   }
   boardFx = {
-    from: fromSquare || null,
-    to: { c: nextState.last_move.dc, r: nextState.last_move.dr },
+    from: fromSquare ? { c: Number(fromSquare.c), r: Number(fromSquare.r) } : null,
+    to: { c: Number(nextState.last_move.dc), r: Number(nextState.last_move.dr) },
     capture: !!nextState.last_move_capture,
     player: nextState.last_move_player || 'red'
   };
