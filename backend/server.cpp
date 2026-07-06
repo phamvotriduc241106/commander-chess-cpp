@@ -1,6 +1,7 @@
 #include "engine.hpp"
 #include "third_party/httplib.h"
 #include "third_party/json.hpp"
+#include "response_util.hpp"
 
 #include <cstdlib>
 #include <cctype>
@@ -9,10 +10,43 @@
 #include <mutex>
 #include <random>
 #include <sstream>
-#include <string>
+#include <cstring>
 #include <unordered_map>
 
 using json = nlohmann::json;
+
+// -----------------------------------------------------------------------------
+// CSRF protection utilities (double‑submit cookie pattern)
+// -----------------------------------------------------------------------------
+inline std::string generate_csrf_token() {
+    static thread_local std::mt19937_64 rng(std::random_device{}());
+    std::uniform_int_distribution<uint64_t> dist;
+    uint64_t a = dist(rng);
+    uint64_t b = dist(rng);
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0') << std::setw(16) << a << std::setw(16) << b;
+    return oss.str();
+}
+
+inline std::string get_cookie_value(const std::string& cookie_header, const std::string& name) {
+    std::string search = name + "=";
+    size_t pos = cookie_header.find(search);
+    if (pos == std::string::npos) return {};
+    size_t start = pos + search.size();
+    size_t end = cookie_header.find(';', start);
+    return cookie_header.substr(start, end == std::string::npos ? std::string::npos : end - start);
+}
+
+inline bool verify_csrf(const httplib::Request& req, httplib::Response& res) {
+    std::string header_token = req.get_header_value("X-CSRF-Token");
+    std::string cookie_header = req.get_header_value("Cookie");
+    std::string cookie_token = get_cookie_value(cookie_header, "csrf_token");
+    if (header_token.empty() || cookie_token.empty() || header_token != cookie_token) {
+        set_error_json(res, 403, "CSRFInvalid", "Invalid or missing CSRF token");
+        return false;
+    }
+    return true;
+}
 
 namespace {
 
@@ -59,7 +93,7 @@ json move_to_json(const commander::Move& m) {
 }
 
 json piece_to_json(const commander::PieceData& p) {
-    return json{
+    return json{{
         {"id", p.id},
         {"player", p.player},
         {"kind", p.kind},
@@ -67,17 +101,15 @@ json piece_to_json(const commander::PieceData& p) {
         {"row", p.row},
         {"hero", p.hero},
         {"carrier_id", p.carrier_id}
-    };
+    }};
 }
 
 json state_to_json(const commander::SerializedState& s) {
     json pieces = json::array();
     for (const auto& p : s.pieces) pieces.push_back(piece_to_json(p));
-
     json legal = json::array();
     for (const auto& m : s.legal_moves) legal.push_back(move_to_json(m));
-
-    return json{
+    return json{{
         {"turn", s.turn},
         {"game_over", s.game_over},
         {"result", s.result},
@@ -90,7 +122,7 @@ json state_to_json(const commander::SerializedState& s) {
         {"game_mode", s.game_mode},
         {"difficulty", s.difficulty},
         {"board", {{"cols", 11}, {"rows", 12}}}
-    };
+    }};
 }
 
 bool parse_move(const json& j, commander::Move& m) {
@@ -101,34 +133,28 @@ bool parse_move(const json& j, commander::Move& m) {
             m.dc = j.at("dc").get<int>();
             m.dr = j.at("dr").get<int>();
             return true;
-        } catch (...) {
-            return false;
-        }
+        } catch (...) { return false; }
     }
-    // Alternate payload support: {piece_id, to_col, to_row}
     if (j.contains("piece_id") && j.contains("to_col") && j.contains("to_row")) {
         try {
             m.pid = j.at("piece_id").get<int>();
             m.dc = j.at("to_col").get<int>();
             m.dr = j.at("to_row").get<int>();
             return true;
-        } catch (...) {
-            return false;
-        }
+        } catch (...) { return false; }
     }
     return false;
 }
 
-void set_json(httplib::Response& res, int status, const json& body) {
-    res.status = status;
-    res.set_header("Access-Control-Allow-Origin", "*");
-    res.set_header("Access-Control-Allow-Headers", "Content-Type");
-    res.set_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-    res.set_content(body.dump(), "application/json");
+// -----------------------------------------------------------------------------
+// Deprecated helper – redirected to set_secure_json in response_util.hpp
+// -----------------------------------------------------------------------------
+inline void set_json(httplib::Response &res, int status, const json &body) {
+    set_secure_json(res, status, body);
 }
 
 template <typename Fn>
-void register_post(httplib::Server& svr, const std::string& path, Fn&& fn) {
+void register_post(httplib::Server &svr, const std::string &path, Fn &&fn) {
     svr.Post(path, fn);
     svr.Post("/api" + path, fn); // support Firebase rewrite prefix
 }
@@ -138,176 +164,153 @@ void register_post(httplib::Server& svr, const std::string& path, Fn&& fn) {
 int main() {
     httplib::Server svr;
 
-    svr.Options(R"(/.*)", [](const httplib::Request&, httplib::Response& res) {
-        res.set_header("Access-Control-Allow-Origin", "*");
-        res.set_header("Access-Control-Allow-Headers", "Content-Type");
-        res.set_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
-        res.status = 200;
+#include "auth.hpp"
+
+    // Register OAuth routes
+    svr.Post("/auth/google", handle_google_auth);
+    svr.Post("/auth/apple", handle_apple_auth);
+    svr.Post("/auth/facebook", handle_facebook_auth);
+
+    // Middleware to validate Authorization bearer token for protected routes
+    svr.set_pre_routing_handler([&](const httplib::Request &req, httplib::Response &res) -> httplib::Server::HandlerResponse {
+        // Bypass auth for health and auth endpoints
+        if (req.path.rfind("/health") == 0 || req.path.rfind("/auth/") == 0) {
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
+        // Expect Authorization: Bearer <token>
+        std::string auth = req.get_header_value("Authorization");
+        if (auth.size() > 7 && auth.substr(0,7) == "Bearer ") {
+            std::string token = auth.substr(7);
+            json payload;
+            if (JwtHelper::verify(token, payload)) {
+                // token valid – you could attach user_id to request via a custom header for downstream handlers
+                // For simplicity we just allow the request to proceed
+                return httplib::Server::HandlerResponse::Unhandled;
+            }
+        }
+        set_error_json(res, 401, "AuthRequired", "Missing or invalid Authorization token");
+        return httplib::Server::HandlerResponse::Handled;
     });
 
-    auto health_handler = [](const httplib::Request&, httplib::Response& res) {
+    svr.Options(R"(/.*)", [&](const httplib::Request &req, httplib::Response &res) {
+        set_cors_header(res, req.get_header_value("Origin"));
+        set_secure_json(res, 200, json{{"ok", true}});
+    });
+
+    auto health_handler = [&](const httplib::Request &, httplib::Response &res) {
+        set_cors_header(res, "*"); // no origin needed for health
         set_json(res, 200, json{{"ok", true}});
     };
     svr.Get("/health", health_handler);
     svr.Get("/api/health", health_handler);
 
-    register_post(svr, "/new", [](const httplib::Request& req, httplib::Response& res) {
+    // ---------- /new (create game) ----------
+    register_post(svr, "/new", [&](const httplib::Request &req, httplib::Response &res) {
+        if (!check_rate_limit(req.remote_addr, res)) return;
+        set_cors_header(res, req.get_header_value("Origin"));
+        if (!verify_csrf(req, res)) return; // CSRF protection
         std::string human = "red";
         std::string game_mode = "full";
         std::string difficulty = "medium";
         if (!req.body.empty()) {
-            json in = json::parse(req.body, nullptr, false);
-            if (!in.is_discarded() && in.is_object() && in.contains("human_player")) {
+            json in = safe_parse(req.body, res);
+            if (in.is_discarded()) return;
+            if (in.is_object() && in.contains("human_player")) {
                 std::string p = in.value("human_player", "red");
                 if (p == "red" || p == "blue") human = p;
             }
-            if (!in.is_discarded() && in.is_object() && in.contains("game_mode")) {
+            if (in.is_object() && in.contains("game_mode")) {
                 std::string m = in.value("game_mode", "full");
                 if (m == "full" || m == "marine" || m == "air" || m == "land") game_mode = m;
             }
-            if (!in.is_discarded() && in.is_object() && in.contains("difficulty")) {
+            if (in.is_object() && in.contains("difficulty")) {
                 difficulty = normalize_difficulty(in.value("difficulty", "medium"));
             }
         }
-
         commander::GameState st = commander::new_game(game_mode, difficulty);
         st.human_player = human;
         st.bot_player = (human == "red") ? "blue" : "red";
-
-        // If human chose blue, bot (red) moves first.
         if (st.current == st.bot_player) {
             commander::bot_move(st);
         }
-
         std::string gid = make_game_id();
         {
             std::lock_guard<std::mutex> lk(g_sessions_mu);
             prune_old_sessions();
             g_sessions[gid] = SessionData{st, std::chrono::system_clock::now()};
         }
-
-        set_json(res, 200, json{{"game_id", gid}, {"state", state_to_json(commander::serialize_state(st))}});
+        // Set CSRF token cookie for the client
+        set_secure_cookie(res, "csrf_token", generate_csrf_token());
+        set_secure_json(res, 200, json{{"game_id", gid}, {"state", state_to_json(commander::serialize_state(st))}});
     });
 
-    register_post(svr, "/move", [](const httplib::Request& req, httplib::Response& res) {
-        json in = json::parse(req.body, nullptr, false);
-        if (in.is_discarded() || !in.is_object()) {
-            set_json(res, 400, json{{"error", "invalid JSON body"}});
-            return;
-        }
-
+    // ---------- /move ----------
+    register_post(svr, "/move", [&](const httplib::Request &req, httplib::Response &res) {
+        if (!check_rate_limit(req.remote_addr, res)) return;
+        set_cors_header(res, req.get_header_value("Origin"));
+        if (!verify_csrf(req, res)) return;
+        json in = safe_parse(req.body, res);
+        if (in.is_discarded()) return;
         std::string gid = in.value("game_id", "");
-        if (gid.empty()) {
-            set_json(res, 400, json{{"error", "missing game_id"}});
-            return;
-        }
-
+        if (gid.empty()) { set_secure_json(res, 400, json{{"error", "missing game_id"}}); return; }
         commander::Move mv;
-        if (!in.contains("move") || !parse_move(in["move"], mv)) {
-            set_json(res, 400, json{{"error", "missing/invalid move"}});
-            return;
-        }
-
+        if (!in.contains("move") || !parse_move(in["move"], mv)) { set_secure_json(res, 400, json{{"error", "missing/invalid move"}}); return; }
         std::lock_guard<std::mutex> lk(g_sessions_mu);
         auto it = g_sessions.find(gid);
-        if (it == g_sessions.end()) {
-            set_json(res, 404, json{{"error", "game_id not found"}});
-            return;
-        }
+        if (it == g_sessions.end()) { set_secure_json(res, 404, json{{"error", "game_id not found"}}); return; }
         it->second.last_accessed = std::chrono::system_clock::now();
-
         commander::ActionStatus st = commander::apply_move(it->second.state, mv);
-        if (!st.ok) {
-            set_json(res, 400, json{{"error", st.error}});
-            return;
-        }
-
-        set_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second.state))}});
+        if (!st.ok) { set_json(res, 400, json{{"error", st.error}}); return; }
+        set_secure_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second.state))}});
     });
 
-    register_post(svr, "/bot", [](const httplib::Request& req, httplib::Response& res) {
-        json in = json::parse(req.body, nullptr, false);
-        if (in.is_discarded() || !in.is_object()) {
-            set_json(res, 400, json{{"error", "invalid JSON body"}});
-            return;
-        }
-
+    // ---------- /bot ----------
+    register_post(svr, "/bot", [&](const httplib::Request &req, httplib::Response &res) {
+        if (!check_rate_limit(req.remote_addr, res)) return;
+        set_cors_header(res, req.get_header_value("Origin"));
+        if (!verify_csrf(req, res)) return;
+        json in = safe_parse(req.body, res);
+        if (in.is_discarded()) return;
         std::string gid = in.value("game_id", "");
-        if (gid.empty()) {
-            set_json(res, 400, json{{"error", "missing game_id"}});
-            return;
-        }
-
+        if (gid.empty()) { set_secure_json(res, 400, json{{"error", "missing game_id"}}); return; }
         std::lock_guard<std::mutex> lk(g_sessions_mu);
         auto it = g_sessions.find(gid);
-        if (it == g_sessions.end()) {
-            set_json(res, 404, json{{"error", "game_id not found"}});
-            return;
-        }
+        if (it == g_sessions.end()) { set_secure_json(res, 404, json{{"error", "game_id not found"}}); return; }
         it->second.last_accessed = std::chrono::system_clock::now();
-
-        if (it->second.state.game_over) {
-            set_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second.state))}});
-            return;
-        }
-
+        if (it->second.state.game_over) { set_secure_json(res, 200, json{{"state", state_to_json(commander::serialize_state(it->second.state))}}); return; }
         if (in.contains("difficulty") && in["difficulty"].is_string()) {
             it->second.state.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
         }
-
         commander::Move m = commander::bot_move(it->second.state);
-        if (m.pid < 0) {
-            set_json(res, 400, json{{"error", "bot could not find a legal move"}});
-            return;
-        }
-
-        set_json(res, 200, json{{"move", move_to_json(m)}, {"state", state_to_json(commander::serialize_state(it->second.state))}});
+        if (m.pid < 0) { set_json(res, 400, json{{"error", "bot could not find a legal move"}}); return; }
+        set_secure_json(res, 200, json{{"move", move_to_json(m)}, {"state", state_to_json(commander::serialize_state(it->second.state))}});
     });
 
-    register_post(svr, "/hint", [](const httplib::Request& req, httplib::Response& res) {
-        json in = json::parse(req.body, nullptr, false);
-        if (in.is_discarded() || !in.is_object()) {
-            set_json(res, 400, json{{"error", "invalid JSON body"}});
-            return;
-        }
-
+    // ---------- /hint ----------
+    register_post(svr, "/hint", [&](const httplib::Request &req, httplib::Response &res) {
+        if (!check_rate_limit(req.remote_addr, res)) return;
+        set_cors_header(res, req.get_header_value("Origin"));
+        if (!verify_csrf(req, res)) return;
+        json in = safe_parse(req.body, res);
+        if (in.is_discarded()) return;
         std::string gid = in.value("game_id", "");
-        if (gid.empty()) {
-            set_json(res, 400, json{{"error", "missing game_id"}});
-            return;
-        }
-
+        if (gid.empty()) { set_json(res, 400, json{{"error", "missing game_id"}}); return; }
         std::lock_guard<std::mutex> lk(g_sessions_mu);
         auto it = g_sessions.find(gid);
-        if (it == g_sessions.end()) {
-            set_json(res, 404, json{{"error", "game_id not found"}});
-            return;
-        }
+        if (it == g_sessions.end()) { set_json(res, 404, json{{"error", "game_id not found"}}); return; }
         it->second.last_accessed = std::chrono::system_clock::now();
-
-        if (it->second.state.game_over) {
-            set_json(res, 400, json{{"error", "game is already over"}});
-            return;
-        }
-
+        if (it->second.state.game_over) { set_secure_json(res, 400, json{{"error", "game is already over"}}); return; }
         commander::GameState probe = it->second.state;
         if (in.contains("difficulty") && in["difficulty"].is_string()) {
             probe.difficulty = normalize_difficulty(in.value("difficulty", "medium"));
         }
-
         commander::Move m = commander::bot_move(probe);
-        if (m.pid < 0) {
-            set_json(res, 400, json{{"error", "hint could not find a legal move"}});
-            return;
-        }
-
-        set_json(res, 200, json{{"move", move_to_json(m)}});
+        if (m.pid < 0) { set_json(res, 400, json{{"error", "hint could not find a legal move"}}); return; }
+        set_secure_json(res, 200, json{{"move", move_to_json(m)}});
     });
 
     int port = 8080;
-    if (const char* p = std::getenv("PORT")) {
-        try { port = std::stoi(p); } catch (...) { port = 8080; }
-    }
+    if (const char* p = std::getenv("PORT")) { try { port = std::stoi(p); } catch (...) { port = 8080; } }
 
     std::printf("CommanderChess API listening on 0.0.0.0:%d\n", port);
     svr.listen("0.0.0.0", port);
