@@ -1855,6 +1855,13 @@ function runMoveDelight(prevState, nextState, fromSquare) {
     }, delay);
   }
 
+  if (!sameSquare) {
+    window.setTimeout(() => {
+      if (token) token.style.opacity = '0';
+      if (trail) trail.style.opacity = '0';
+    }, 420);
+  }
+
   moveDelightTimer = window.setTimeout(() => {
     token.remove();
     if (trail) trail.remove();
@@ -3371,12 +3378,20 @@ function drawBoardNow() {
         cell.innerHTML = '';
         const token = renderPieceToken(piece);
         token.dataset.pieceKey = pieceKey;
-        if (isFxTo) token.classList.add('piece-landed');
+        if (isFxTo) {
+          const isSame = boardFx.from.c === boardFx.to.c && boardFx.from.r === boardFx.to.r;
+          token.classList.add(isSame ? 'piece-landed-inplace' : 'piece-landed');
+        }
         if (piece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
       } else {
-        if (isFxTo !== currentToken.classList.contains('piece-landed')) {
-          currentToken.classList.toggle('piece-landed', isFxTo);
+        if (isFxTo) {
+          const isSame = boardFx.from.c === boardFx.to.c && boardFx.from.r === boardFx.to.r;
+          if (!currentToken.classList.contains(isSame ? 'piece-landed-inplace' : 'piece-landed')) {
+            currentToken.classList.add(isSame ? 'piece-landed-inplace' : 'piece-landed');
+          }
+        } else {
+          currentToken.classList.remove('piece-landed', 'piece-landed-inplace');
         }
         if ((piece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
           currentToken.classList.toggle('piece-active', piece.id === selectedPid);

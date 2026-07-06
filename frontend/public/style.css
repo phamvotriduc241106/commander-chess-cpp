@@ -2142,6 +2142,11 @@ select,
 }
 
 .piece-landed {
+  opacity: 0;
+  animation: piece-land-fade 640ms ease-out 420ms forwards;
+}
+
+.piece-landed-inplace {
   animation: piece-land 640ms ease-out;
 }
 
@@ -2177,6 +2182,12 @@ select,
   0% { transform: translateY(-14%) scale(0.94); }
   60% { transform: translateY(3%) scale(1.05); }
   100% { transform: translateY(0) scale(1); }
+}
+
+@keyframes piece-land-fade {
+  0% { transform: translateY(-14%) scale(0.94); opacity: 1; }
+  60% { transform: translateY(3%) scale(1.05); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 @keyframes move-trail-fade {
