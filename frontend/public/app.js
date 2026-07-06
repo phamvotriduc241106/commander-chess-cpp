@@ -1129,8 +1129,6 @@ let onlineQueryMatchCode = new URLSearchParams(window.location.search).get('matc
 let uiPrefs = { ...DEFAULT_UI_PREFS };
 let boardFx = null;
 let boardFxTimer = null;
-let fxFlightActive = false;
-let fxFlightTimer = null;
 let moveDelightTimer = null;
 let moveDelightExplosionTimer = null;
 let boardDrawRafId = 0;
@@ -1812,17 +1810,6 @@ function runMoveDelight(prevState, nextState, fromSquare) {
   }
 
   const sameSquare = (fromSquare.c === toSquare.c && fromSquare.r === toSquare.r);
-  const token = renderPieceToken(movedPiece);
-  token.classList.add(
-    'move-fx-piece',
-    `kind-${kindCssToken(movedPiece.kind)}`,
-    movedPiece.player === 'blue' ? 'fx-blue' : 'fx-red'
-  );
-  token.style.width = `${fromCenter.size}px`;
-  token.style.height = `${fromCenter.size}px`;
-  token.style.left = `${fromCenter.x}px`;
-  token.style.top = `${fromCenter.y}px`;
-  layer.appendChild(token);
 
   let trail = null;
   if (!sameSquare && (movedPiece.kind === 'Af' || movedPiece.kind === 'N')) {
@@ -1837,18 +1824,13 @@ function runMoveDelight(prevState, nextState, fromSquare) {
     trail.style.width = `${len}px`;
     trail.style.transform = `translateY(-50%) rotate(${angle}deg)`;
     layer.appendChild(trail);
-  }
 
-  window.requestAnimationFrame(() => {
-    if (sameSquare) {
-      token.classList.add('in-place');
-      return;
-    }
-    const dx = toCenter.x - fromCenter.x;
-    const dy = toCenter.y - fromCenter.y;
-    token.classList.add('in-flight');
-    token.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
-  });
+    // Force reflow for trail transition
+    trail.offsetWidth;
+    window.requestAnimationFrame(() => {
+      trail.style.opacity = '0';
+    });
+  }
 
   if (nextState.last_move_capture) {
     const delay = sameSquare ? 100 : 300;
@@ -1857,15 +1839,7 @@ function runMoveDelight(prevState, nextState, fromSquare) {
     }, delay);
   }
 
-  if (!sameSquare) {
-    window.setTimeout(() => {
-      if (token) token.style.opacity = '0';
-      if (trail) trail.style.opacity = '0';
-    }, 420);
-  }
-
   moveDelightTimer = window.setTimeout(() => {
-    token.remove();
     if (trail) trail.remove();
   }, 740);
 }
@@ -1875,11 +1849,6 @@ function clearBoardFx() {
   if (boardFxTimer) {
     clearTimeout(boardFxTimer);
     boardFxTimer = null;
-  }
-  fxFlightActive = false;
-  if (fxFlightTimer) {
-    clearTimeout(fxFlightTimer);
-    fxFlightTimer = null;
   }
   clearMoveDelightFx();
 }
@@ -1904,23 +1873,6 @@ function rememberBoardFx(nextState, fromSquare) {
     capture: !!nextState.last_move_capture,
     player: nextState.last_move_player || 'red'
   };
-
-  const isSame = fromSquare && fromSquare.c === boardFx.to.c && fromSquare.r === boardFx.to.r;
-  if (!isSame && fromSquare) {
-    fxFlightActive = true;
-    if (fxFlightTimer) clearTimeout(fxFlightTimer);
-    fxFlightTimer = window.setTimeout(() => {
-      fxFlightActive = false;
-      fxFlightTimer = null;
-      drawBoard();
-    }, 420);
-  } else {
-    fxFlightActive = false;
-    if (fxFlightTimer) {
-      clearTimeout(fxFlightTimer);
-      fxFlightTimer = null;
-    }
-  }
 
   scheduleBoardFxClear();
 }
@@ -3394,30 +3346,101 @@ function drawBoardNow() {
       cell.className = className;
     }
 
-    // Hide target piece during active flight animation to prevent duplicates
-    let activePiece = piece;
-    if (fxFlightActive && fx && fx.to && c === fx.to.c && r === fx.to.r) {
-      activePiece = null;
-    }
-
     // Sync piece tokens
     const currentToken = cell.firstElementChild;
-    if (activePiece) {
-      const pieceKey = `${activePiece.id}-${activePiece.kind}-${activePiece.player}-${activePiece.promote_level}-${uiPrefs.pieceTheme}`;
+    if (piece) {
+      const pieceKey = `${piece.id}-${piece.kind}-${piece.player}-${piece.promote_level}-${uiPrefs.pieceTheme}`;
       
       if (!currentToken || currentToken.dataset.pieceKey !== pieceKey) {
         cell.innerHTML = '';
-        const token = renderPieceToken(activePiece);
+        const token = renderPieceToken(piece);
         token.dataset.pieceKey = pieceKey;
-        if (isFxTo) token.classList.add('piece-landed');
-        if (activePiece.id === selectedPid) token.classList.add('piece-active');
+        
+        // Handle FLIP slide animation
+        if (isFxTo && fx && fx.from) {
+          const isSame = fx.from.c === fx.to.c && fx.from.r === fx.to.r;
+          if (!isSame) {
+            const fromCell = boardEl.querySelector(`.cell[data-col="${fx.from.c}"][data-row="${fx.from.r}"]`);
+            if (fromCell) {
+              const fromRect = fromCell.getBoundingClientRect();
+              const toRect = cell.getBoundingClientRect();
+              const dx = fromRect.left - toRect.left;
+              const dy = fromRect.top - toRect.top;
+              
+              token.style.transform = `translate(${dx}px, ${dy}px)`;
+              token.style.transition = 'none';
+              token.style.zIndex = '15'; // Keep sliding piece on top of others
+              
+              // Force reflow
+              token.offsetWidth;
+              
+              window.requestAnimationFrame(() => {
+                token.style.transition = 'transform 420ms cubic-bezier(0.22, 0.72, 0.12, 1)';
+                token.style.transform = 'translate(0, 0)';
+              });
+              
+              window.setTimeout(() => {
+                token.classList.add('piece-landed');
+                token.style.transition = '';
+                token.style.transform = '';
+                token.style.zIndex = '';
+              }, 420);
+            } else {
+              token.classList.add('piece-landed');
+            }
+          } else {
+            token.classList.add('piece-landed');
+          }
+        }
+        
+        if (piece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
       } else {
-        if (isFxTo !== currentToken.classList.contains('piece-landed')) {
-          currentToken.classList.toggle('piece-landed', isFxTo);
+        if (isFxTo) {
+          const isSame = fx && fx.from && fx.from.c === fx.to.c && fx.from.r === fx.to.r;
+          if (!isSame && fx && fx.from && !currentToken.classList.contains('piece-landed') && !currentToken.dataset.sliding) {
+            currentToken.dataset.sliding = 'true';
+            
+            const fromCell = boardEl.querySelector(`.cell[data-col="${fx.from.c}"][data-row="${fx.from.r}"]`);
+            if (fromCell) {
+              const fromRect = fromCell.getBoundingClientRect();
+              const toRect = cell.getBoundingClientRect();
+              const dx = fromRect.left - toRect.left;
+              const dy = fromRect.top - toRect.top;
+              
+              currentToken.style.transform = `translate(${dx}px, ${dy}px)`;
+              currentToken.style.transition = 'none';
+              currentToken.style.zIndex = '15';
+              
+              currentToken.offsetWidth;
+              
+              window.requestAnimationFrame(() => {
+                currentToken.style.transition = 'transform 420ms cubic-bezier(0.22, 0.72, 0.12, 1)';
+                currentToken.style.transform = 'translate(0, 0)';
+              });
+              
+              window.setTimeout(() => {
+                currentToken.classList.add('piece-landed');
+                currentToken.style.transition = '';
+                currentToken.style.transform = '';
+                currentToken.style.zIndex = '';
+                delete currentToken.dataset.sliding;
+              }, 420);
+            } else {
+              currentToken.classList.add('piece-landed');
+              delete currentToken.dataset.sliding;
+            }
+          } else if (isSame || !fx || !fx.from) {
+            if (!currentToken.classList.contains('piece-landed')) {
+              currentToken.classList.add('piece-landed');
+            }
+          }
+        } else {
+          currentToken.classList.remove('piece-landed');
+          delete currentToken.dataset.sliding;
         }
-        if ((activePiece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
-          currentToken.classList.toggle('piece-active', activePiece.id === selectedPid);
+        if ((piece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
+          currentToken.classList.toggle('piece-active', piece.id === selectedPid);
         }
       }
     } else {

@@ -1,16 +1,17 @@
-const CACHE_NAME = 'commander-chess-shell-b2c00db4cd1d';
+const CACHE_NAME = 'commander-chess-shell-705c67cfe2ce';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/style.d9e53ce7797c.css',
-  '/app.f033d423986c.js',
+  '/style.17cded050861.css',
+  '/app.0a0d665af1ad.js',
   '/manifest.webmanifest',
   '/engine/commander_engine.js',
   '/engine/commander_engine.wasm',
   '/engine/engine_bridge.js',
   '/engine/engine_worker.js',
   '/icons/icon-192.svg',
-  '/icons/icon-512.svg'
+  '/icons/icon-512.svg',
+  '/piece_sprites.json'
 ];
 
 self.addEventListener('install', (event) => {
