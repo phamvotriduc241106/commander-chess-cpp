@@ -2163,14 +2163,14 @@ select,
 }
 
 @keyframes origin-trace {
-  0% { transform: scale(1.05); opacity: 1; }
-  100% { transform: scale(1); opacity: 0.84; }
+  0% { outline-offset: -8px; opacity: 1; }
+  100% { outline-offset: -2px; opacity: 0.84; }
 }
 
 @keyframes impact-burst {
-  0% { transform: scale(0.9); opacity: 0.8; }
-  40% { transform: scale(1.1); opacity: 1; }
-  100% { transform: scale(1); opacity: 0; }
+  0% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), 0 0 0 rgba(255, 255, 255, 0.2); }
+  40% { box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.7), 0 0 18px rgba(255, 255, 255, 0.46); }
+  100% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0), 0 0 0 rgba(255, 255, 255, 0); }
 }
 
 @keyframes piece-land {
