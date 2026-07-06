@@ -1129,6 +1129,8 @@ let onlineQueryMatchCode = new URLSearchParams(window.location.search).get('matc
 let uiPrefs = { ...DEFAULT_UI_PREFS };
 let boardFx = null;
 let boardFxTimer = null;
+let fxFlightActive = false;
+let fxFlightTimer = null;
 let moveDelightTimer = null;
 let moveDelightExplosionTimer = null;
 let boardDrawRafId = 0;
@@ -1874,6 +1876,11 @@ function clearBoardFx() {
     clearTimeout(boardFxTimer);
     boardFxTimer = null;
   }
+  fxFlightActive = false;
+  if (fxFlightTimer) {
+    clearTimeout(fxFlightTimer);
+    fxFlightTimer = null;
+  }
   clearMoveDelightFx();
 }
 
@@ -1897,6 +1904,24 @@ function rememberBoardFx(nextState, fromSquare) {
     capture: !!nextState.last_move_capture,
     player: nextState.last_move_player || 'red'
   };
+
+  const isSame = fromSquare && fromSquare.c === boardFx.to.c && fromSquare.r === boardFx.to.r;
+  if (!isSame && fromSquare) {
+    fxFlightActive = true;
+    if (fxFlightTimer) clearTimeout(fxFlightTimer);
+    fxFlightTimer = window.setTimeout(() => {
+      fxFlightActive = false;
+      fxFlightTimer = null;
+      drawBoard();
+    }, 420);
+  } else {
+    fxFlightActive = false;
+    if (fxFlightTimer) {
+      clearTimeout(fxFlightTimer);
+      fxFlightTimer = null;
+    }
+  }
+
   scheduleBoardFxClear();
 }
 
@@ -3369,32 +3394,30 @@ function drawBoardNow() {
       cell.className = className;
     }
 
+    // Hide target piece during active flight animation to prevent duplicates
+    let activePiece = piece;
+    if (fxFlightActive && fx && fx.to && c === fx.to.c && r === fx.to.r) {
+      activePiece = null;
+    }
+
     // Sync piece tokens
     const currentToken = cell.firstElementChild;
-    if (piece) {
-      const pieceKey = `${piece.id}-${piece.kind}-${piece.player}-${piece.promote_level}-${uiPrefs.pieceTheme}`;
+    if (activePiece) {
+      const pieceKey = `${activePiece.id}-${activePiece.kind}-${activePiece.player}-${activePiece.promote_level}-${uiPrefs.pieceTheme}`;
       
       if (!currentToken || currentToken.dataset.pieceKey !== pieceKey) {
         cell.innerHTML = '';
-        const token = renderPieceToken(piece);
+        const token = renderPieceToken(activePiece);
         token.dataset.pieceKey = pieceKey;
-        if (isFxTo) {
-          const isSame = boardFx.from.c === boardFx.to.c && boardFx.from.r === boardFx.to.r;
-          token.classList.add(isSame ? 'piece-landed-inplace' : 'piece-landed');
-        }
-        if (piece.id === selectedPid) token.classList.add('piece-active');
+        if (isFxTo) token.classList.add('piece-landed');
+        if (activePiece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
       } else {
-        if (isFxTo) {
-          const isSame = boardFx.from.c === boardFx.to.c && boardFx.from.r === boardFx.to.r;
-          if (!currentToken.classList.contains(isSame ? 'piece-landed-inplace' : 'piece-landed')) {
-            currentToken.classList.add(isSame ? 'piece-landed-inplace' : 'piece-landed');
-          }
-        } else {
-          currentToken.classList.remove('piece-landed', 'piece-landed-inplace');
+        if (isFxTo !== currentToken.classList.contains('piece-landed')) {
+          currentToken.classList.toggle('piece-landed', isFxTo);
         }
-        if ((piece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
-          currentToken.classList.toggle('piece-active', piece.id === selectedPid);
+        if ((activePiece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
+          currentToken.classList.toggle('piece-active', activePiece.id === selectedPid);
         }
       }
     } else {
