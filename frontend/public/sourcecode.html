@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Commander Chess – Source Code</title>
+  <link rel="stylesheet" href="/style.d9e53ce7797c.css" />
+</head>
+<body class="app-bg">
+  <header class="titlebar glass glass-hover">
+    <h1>Commander Chess – Source Code</h1>
+    <button id="backBtn" class="btn ghost" type="button" onclick="window.location.href='index.html'">← Back to Game</button>
+  </header>
+  <section class="content">
+    <p>The latest source code is available on GitHub.</p>
+    <ul>
+      <li><a href="https://github.com/phamvotriduc241106/commander-chess-cpp" target="_blank" rel="noopener">GitHub Repository</a></li>
+      <li><a href="https://github.com/phamvotriduc241106/commander-chess-cpp/archive/refs/heads/main.zip" target="_blank" rel="noopener">Download ZIP of the latest commit</a></li>
+    </ul>
+    <hr />
+    <h2>Selected Files (inline preview)</h2>
+    <pre><code id="fileContent">Loading...</code></pre>
+    <script>
+      // Load a sample file (README) for quick preview.
+      fetch('README.md')
+        .then(r => r.text())
+        .then(txt => {
+          document.getElementById('fileContent').textContent = txt;
+        })
+        .catch(() => {
+          document.getElementById('fileContent').textContent = 'Unable to load file.';
+        });
+    </script>
+  </section>
+</body>
+</html>

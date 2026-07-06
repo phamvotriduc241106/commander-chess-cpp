@@ -1,9 +1,9 @@
-const CACHE_NAME = 'commander-chess-shell-768545ee1643';
+const CACHE_NAME = 'commander-chess-shell-b2c00db4cd1d';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/style.81213042deec.css',
-  '/app.20530a000e58.js',
+  '/style.d9e53ce7797c.css',
+  '/app.f033d423986c.js',
   '/manifest.webmanifest',
   '/engine/commander_engine.js',
   '/engine/commander_engine.wasm',
