@@ -2648,6 +2648,15 @@ function updateHistoryUI() {
   histPrevBtn.disabled = !hasHistory || (reviewing && reviewIndex <= historyOffset);
   histNextBtn.disabled = !reviewing;
   histLiveBtn.disabled = !reviewing;
+  
+  if (reviewing) {
+    const activeBtn = historyListEl.querySelector('.active');
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  } else {
+    historyListEl.scrollTop = historyListEl.scrollHeight;
+  }
 }
 
 function legalMovesForPid(pid, src = null) {
