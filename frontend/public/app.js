@@ -6016,6 +6016,14 @@ if ('serviceWorker' in navigator) {
       console.warn('[Commander Chess] service worker registration failed', err);
     });
   });
+
+  // Auto-reload page when a new service worker version takes control
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }
 
 tryLoadReplayFromUrl().catch((err) => {
