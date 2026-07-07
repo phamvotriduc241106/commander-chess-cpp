@@ -2145,6 +2145,10 @@ select,
   animation: piece-land 640ms ease-out;
 }
 
+.piece.piece-moving {
+  opacity: 0 !important;
+}
+
 .piece.hero {
   box-shadow:
     0 0 0 2px #2f3a4a,

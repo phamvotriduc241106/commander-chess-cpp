@@ -1810,6 +1810,17 @@ function runMoveDelight(prevState, nextState, fromSquare) {
   }
 
   const sameSquare = (fromSquare.c === toSquare.c && fromSquare.r === toSquare.r);
+  const token = renderPieceToken(movedPiece);
+  token.classList.add(
+    'move-fx-piece',
+    `kind-${kindCssToken(movedPiece.kind)}`,
+    movedPiece.player === 'blue' ? 'fx-blue' : 'fx-red'
+  );
+  token.style.width = `${fromCenter.size}px`;
+  token.style.height = `${fromCenter.size}px`;
+  token.style.left = `${fromCenter.x}px`;
+  token.style.top = `${fromCenter.y}px`;
+  layer.appendChild(token);
 
   let trail = null;
   if (!sameSquare && (movedPiece.kind === 'Af' || movedPiece.kind === 'N')) {
@@ -1832,6 +1843,20 @@ function runMoveDelight(prevState, nextState, fromSquare) {
     });
   }
 
+  // Force reflow to guarantee the transition starts from the starting square
+  token.offsetWidth;
+
+  window.requestAnimationFrame(() => {
+    if (sameSquare) {
+      token.classList.add('in-place');
+      return;
+    }
+    const dx = toCenter.x - fromCenter.x;
+    const dy = toCenter.y - fromCenter.y;
+    token.classList.add('in-flight');
+    token.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
+  });
+
   if (nextState.last_move_capture) {
     const delay = sameSquare ? 100 : 300;
     moveDelightExplosionTimer = window.setTimeout(() => {
@@ -1839,7 +1864,20 @@ function runMoveDelight(prevState, nextState, fromSquare) {
     }, delay);
   }
 
+  if (!sameSquare) {
+    window.setTimeout(() => {
+      // Find the piece at the destination cell and make it visible (remove 'piece-moving')
+      const destCell = boardEl.querySelector(`.cell[data-col="${toSquare.c}"][data-row="${toSquare.r}"]`);
+      if (destCell && destCell.firstElementChild) {
+        destCell.firstElementChild.classList.remove('piece-moving');
+      }
+      if (token) token.style.opacity = '0';
+      if (trail) trail.style.opacity = '0';
+    }, 420);
+  }
+
   moveDelightTimer = window.setTimeout(() => {
+    token.remove();
     if (trail) trail.remove();
   }, 740);
 }
@@ -3347,6 +3385,7 @@ function drawBoardNow() {
     }
 
     // Sync piece tokens
+    // Sync piece tokens
     const currentToken = cell.firstElementChild;
     if (piece) {
       const pieceKey = `${piece.id}-${piece.kind}-${piece.player}-${piece.promote_level}-${uiPrefs.pieceTheme}`;
@@ -3355,89 +3394,26 @@ function drawBoardNow() {
         cell.innerHTML = '';
         const token = renderPieceToken(piece);
         token.dataset.pieceKey = pieceKey;
-        
-        // Handle FLIP slide animation
-        if (isFxTo && fx && fx.from) {
-          const isSame = fx.from.c === fx.to.c && fx.from.r === fx.to.r;
-          if (!isSame) {
-            const fromCell = boardEl.querySelector(`.cell[data-col="${fx.from.c}"][data-row="${fx.from.r}"]`);
-            if (fromCell) {
-              const fromRect = fromCell.getBoundingClientRect();
-              const toRect = cell.getBoundingClientRect();
-              const dx = fromRect.left - toRect.left;
-              const dy = fromRect.top - toRect.top;
-              
-              token.style.transform = `translate(${dx}px, ${dy}px)`;
-              token.style.transition = 'none';
-              token.style.zIndex = '15'; // Keep sliding piece on top of others
-              
-              // Force reflow
-              token.offsetWidth;
-              
-              window.requestAnimationFrame(() => {
-                token.style.transition = 'transform 420ms cubic-bezier(0.22, 0.72, 0.12, 1)';
-                token.style.transform = 'translate(0, 0)';
-              });
-              
-              window.setTimeout(() => {
-                token.classList.add('piece-landed');
-                token.style.transition = '';
-                token.style.transform = '';
-                token.style.zIndex = '';
-              }, 420);
-            } else {
-              token.classList.add('piece-landed');
-            }
-          } else {
-            token.classList.add('piece-landed');
+        if (isFxTo) {
+          token.classList.add('piece-landed');
+          const isSame = fx && fx.from && fx.from.c === fx.to.c && fx.from.r === fx.to.r;
+          if (!isSame && fx && fx.from) {
+            token.classList.add('piece-moving');
           }
         }
-        
         if (piece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
       } else {
         if (isFxTo) {
+          if (!currentToken.classList.contains('piece-landed')) {
+            currentToken.classList.add('piece-landed');
+          }
           const isSame = fx && fx.from && fx.from.c === fx.to.c && fx.from.r === fx.to.r;
-          if (!isSame && fx && fx.from && !currentToken.classList.contains('piece-landed') && !currentToken.dataset.sliding) {
-            currentToken.dataset.sliding = 'true';
-            
-            const fromCell = boardEl.querySelector(`.cell[data-col="${fx.from.c}"][data-row="${fx.from.r}"]`);
-            if (fromCell) {
-              const fromRect = fromCell.getBoundingClientRect();
-              const toRect = cell.getBoundingClientRect();
-              const dx = fromRect.left - toRect.left;
-              const dy = fromRect.top - toRect.top;
-              
-              currentToken.style.transform = `translate(${dx}px, ${dy}px)`;
-              currentToken.style.transition = 'none';
-              currentToken.style.zIndex = '15';
-              
-              currentToken.offsetWidth;
-              
-              window.requestAnimationFrame(() => {
-                currentToken.style.transition = 'transform 420ms cubic-bezier(0.22, 0.72, 0.12, 1)';
-                currentToken.style.transform = 'translate(0, 0)';
-              });
-              
-              window.setTimeout(() => {
-                currentToken.classList.add('piece-landed');
-                currentToken.style.transition = '';
-                currentToken.style.transform = '';
-                currentToken.style.zIndex = '';
-                delete currentToken.dataset.sliding;
-              }, 420);
-            } else {
-              currentToken.classList.add('piece-landed');
-              delete currentToken.dataset.sliding;
-            }
-          } else if (isSame || !fx || !fx.from) {
-            if (!currentToken.classList.contains('piece-landed')) {
-              currentToken.classList.add('piece-landed');
-            }
+          if (!isSame && fx && fx.from && !currentToken.classList.contains('piece-moving')) {
+            currentToken.classList.add('piece-moving');
           }
         } else {
-          currentToken.classList.remove('piece-landed');
-          delete currentToken.dataset.sliding;
+          currentToken.classList.remove('piece-landed', 'piece-moving');
         }
         if ((piece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
           currentToken.classList.toggle('piece-active', piece.id === selectedPid);
@@ -5961,6 +5937,8 @@ applyLocalizedStaticText();
 updateSetupSelectionUI();
 updateQuickRestartVisibility();
 openSetupMenu();
+setSetupDetailsVisible(true);
+openTutorial({ replay: true });
 updatePwaInstallButton();
 updateHistoryUI();
 updateStatus();
