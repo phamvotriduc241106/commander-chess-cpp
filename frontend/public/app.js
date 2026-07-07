@@ -744,13 +744,13 @@ const PIECE_GLYPH = Object.freeze({
   H: 'HQ',
   In: 'IN',
   M: 'MI',
-  T: 'T',
+  T: 'TK',
   E: 'EN',
-  A: 'A',
+  A: 'AR',
   Aa: 'AA',
   Ms: 'MS',
   Af: 'AF',
-  N: 'N'
+  N: 'NV'
 });
 
 const TUTORIAL_STORAGE_KEY = 'tutorialCompleted';
@@ -5938,7 +5938,6 @@ updateSetupSelectionUI();
 updateQuickRestartVisibility();
 openSetupMenu();
 setSetupDetailsVisible(true);
-openTutorial({ replay: true });
 updatePwaInstallButton();
 updateHistoryUI();
 updateStatus();
