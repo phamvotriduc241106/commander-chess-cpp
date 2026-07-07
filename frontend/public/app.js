@@ -5938,6 +5938,7 @@ updateSetupSelectionUI();
 updateQuickRestartVisibility();
 openSetupMenu();
 setSetupDetailsVisible(true);
+resetTutorialState();
 updatePwaInstallButton();
 updateHistoryUI();
 updateStatus();
