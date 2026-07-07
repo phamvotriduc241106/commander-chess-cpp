@@ -744,13 +744,13 @@ const PIECE_GLYPH = Object.freeze({
   H: 'HQ',
   In: 'IN',
   M: 'MI',
-  T: 'TK',
+  T: 'T',
   E: 'EN',
-  A: 'AR',
+  A: 'A',
   Aa: 'AA',
   Ms: 'MS',
   Af: 'AF',
-  N: 'NV'
+  N: 'N'
 });
 
 const TUTORIAL_STORAGE_KEY = 'tutorialCompleted';
