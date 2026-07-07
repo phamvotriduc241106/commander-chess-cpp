@@ -1994,7 +1994,7 @@ select,
     transform 420ms cubic-bezier(0.22, 0.72, 0.12, 1),
     filter 420ms ease;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.26));
-  /* will-change removed for performance */;
+  will-change: transform, filter;
 }
 
 .move-fx-piece.in-flight {
@@ -2145,10 +2145,6 @@ select,
   animation: piece-land 640ms ease-out;
 }
 
-.piece.piece-moving {
-  opacity: 0 !important;
-}
-
 .piece.hero {
   box-shadow:
     0 0 0 2px #2f3a4a,
@@ -2178,9 +2174,9 @@ select,
 }
 
 @keyframes piece-land {
-  0% { transform: translateY(-14%) scale(0.94); }
+  0% { transform: translateY(-14%) scale(0.94); filter: drop-shadow(0 0 0 rgba(0, 0, 0, 0)); }
   60% { transform: translateY(3%) scale(1.05); }
-  100% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(0) scale(1); filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.22)); }
 }
 
 

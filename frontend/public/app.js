@@ -1864,20 +1864,8 @@ function runMoveDelight(prevState, nextState, fromSquare) {
     }, delay);
   }
 
-  if (!sameSquare) {
-    window.setTimeout(() => {
-      // Find the piece at the destination cell and make it visible (remove 'piece-moving')
-      const destCell = boardEl.querySelector(`.cell[data-col="${toSquare.c}"][data-row="${toSquare.r}"]`);
-      if (destCell && destCell.firstElementChild) {
-        destCell.firstElementChild.classList.remove('piece-moving');
-      }
-      if (token) token.style.opacity = '0';
-      if (trail) trail.style.opacity = '0';
-    }, 420);
-  }
-
   moveDelightTimer = window.setTimeout(() => {
-    token.remove();
+    if (token) token.remove();
     if (trail) trail.remove();
   }, 740);
 }
@@ -3396,10 +3384,6 @@ function drawBoardNow() {
         token.dataset.pieceKey = pieceKey;
         if (isFxTo) {
           token.classList.add('piece-landed');
-          const isSame = fx && fx.from && fx.from.c === fx.to.c && fx.from.r === fx.to.r;
-          if (!isSame && fx && fx.from) {
-            token.classList.add('piece-moving');
-          }
         }
         if (piece.id === selectedPid) token.classList.add('piece-active');
         cell.appendChild(token);
@@ -3408,12 +3392,8 @@ function drawBoardNow() {
           if (!currentToken.classList.contains('piece-landed')) {
             currentToken.classList.add('piece-landed');
           }
-          const isSame = fx && fx.from && fx.from.c === fx.to.c && fx.from.r === fx.to.r;
-          if (!isSame && fx && fx.from && !currentToken.classList.contains('piece-moving')) {
-            currentToken.classList.add('piece-moving');
-          }
         } else {
-          currentToken.classList.remove('piece-landed', 'piece-moving');
+          currentToken.classList.remove('piece-landed');
         }
         if ((piece.id === selectedPid) !== currentToken.classList.contains('piece-active')) {
           currentToken.classList.toggle('piece-active', piece.id === selectedPid);
